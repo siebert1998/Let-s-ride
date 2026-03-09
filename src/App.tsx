@@ -7,6 +7,8 @@ interface RouteSlot {
   title: string;
 }
 
+const groups = ['VZW', 'AquaMundo Cycling Team'] as const;
+
 const getMondayForWeek = (anchor: Date): Date => {
   const start = new Date(anchor);
   start.setHours(0, 0, 0, 0);
@@ -35,6 +37,7 @@ const toDateKey = (date: Date): string => {
 
 function App(): JSX.Element {
   const [weekOffset, setWeekOffset] = useState<number>(0);
+  const [selectedGroup, setSelectedGroup] = useState<string>(groups[0]);
 
   const routeSlots = useMemo<RouteSlot[]>(() => {
     const anchor = new Date();
@@ -59,6 +62,9 @@ function App(): JSX.Element {
           <h1 className="text-3xl font-extrabold tracking-tight text-textMain">Let&apos;s ride</h1>
         </div>
         <TopControls
+          groups={groups}
+          selectedGroup={selectedGroup}
+          onGroupChange={setSelectedGroup}
           weekOffset={weekOffset}
           onPreviousWeek={() => setWeekOffset((value) => value - 1)}
           onNextWeek={() => setWeekOffset((value) => value + 1)}
@@ -69,9 +75,9 @@ function App(): JSX.Element {
       <main className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {routeSlots.map((slot, index) => (
           <RouteCard
-            key={slot.key}
+            key={`${selectedGroup}-${slot.key}`}
             title={slot.title}
-            storageId={`day-${slot.key}`}
+            storageId={`group-${selectedGroup}-day-${slot.key}`}
             initialNotes={index > 3 ? 'Weekend focus route.' : ''}
           />
         ))}

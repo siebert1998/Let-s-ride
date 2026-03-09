@@ -24,13 +24,24 @@ const formatWeekRange = (anchor: Date): string => {
 };
 
 interface TopControlsProps {
+  groups: readonly string[];
+  selectedGroup: string;
+  onGroupChange: (group: string) => void;
   weekOffset: number;
   onPreviousWeek: () => void;
   onNextWeek: () => void;
   onToday: () => void;
 }
 
-export function TopControls({ weekOffset, onPreviousWeek, onNextWeek, onToday }: TopControlsProps): JSX.Element {
+export function TopControls({
+  groups,
+  selectedGroup,
+  onGroupChange,
+  weekOffset,
+  onPreviousWeek,
+  onNextWeek,
+  onToday,
+}: TopControlsProps): JSX.Element {
   const selectedRange = useMemo(() => {
     const anchor = new Date();
     anchor.setDate(anchor.getDate() + weekOffset * 7);
@@ -39,6 +50,18 @@ export function TopControls({ weekOffset, onPreviousWeek, onNextWeek, onToday }:
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-3">
+      <select
+        value={selectedGroup}
+        onChange={(event) => onGroupChange(event.target.value)}
+        className="max-w-[220px] rounded-lg border border-line bg-panel px-3 py-2 text-sm font-semibold text-textMain outline-none transition focus:border-accent"
+      >
+        {groups.map((clubGroup) => (
+          <option key={clubGroup} value={clubGroup}>
+            {clubGroup}
+          </option>
+        ))}
+      </select>
+
       <div className="flex items-center rounded-lg border border-line bg-panel px-2 py-1">
         <button
           type="button"

@@ -180,17 +180,37 @@ export function RouteCard({ title, storageId, initialNotes = '' }: RouteCardProp
     }
   };
 
+  const handleDeleteGpx = async (): Promise<void> => {
+    setRouteData(null);
+    setSourceFile(null);
+    await persistRoute({ sourceFile: null, routeData: null });
+  };
+
   const statusLabel = isSaving ? 'Syncing...' : routeData ? 'Synced' : null;
 
   return (
     <article className="flex min-h-[420px] flex-col rounded-xl2 border border-line/80 bg-panel/95 p-4 shadow-card">
       <div className="mb-3 flex items-center justify-between gap-4">
         <h2 className="text-base font-extrabold tracking-wide text-textMain">{title}</h2>
-        {statusLabel ? (
-          <span className="rounded-md border border-accent/50 bg-accent/10 px-2 py-0.5 text-xs font-semibold text-accent">
-            {statusLabel}
-          </span>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {statusLabel ? (
+            <span className="rounded-md border border-accent/50 bg-accent/10 px-2 py-0.5 text-xs font-semibold text-accent">
+              {statusLabel}
+            </span>
+          ) : null}
+          {sourceFile ? (
+            <button
+              type="button"
+              onClick={() => void handleDeleteGpx()}
+              aria-label="Delete GPX"
+              className="grid h-7 w-7 place-items-center rounded-full bg-black text-white transition hover:bg-zinc-800"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <UploadDropzone onFileSelected={handleFileSelected} disabled={isLoading || isSaving} />
