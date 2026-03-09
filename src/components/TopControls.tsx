@@ -1,6 +1,4 @@
-import { useMemo, useState } from 'react';
-
-const groups = ['VZW', 'AquaMundo Cycling Team'] as const;
+import { useMemo } from 'react';
 
 const getMondayForWeek = (anchor: Date): Date => {
   const start = new Date(anchor);
@@ -26,15 +24,24 @@ const formatWeekRange = (anchor: Date): string => {
 };
 
 interface TopControlsProps {
+  groups: readonly string[];
+  selectedGroup: string;
+  onGroupChange: (group: string) => void;
   weekOffset: number;
   onPreviousWeek: () => void;
   onNextWeek: () => void;
   onToday: () => void;
 }
 
-export function TopControls({ weekOffset, onPreviousWeek, onNextWeek, onToday }: TopControlsProps): JSX.Element {
-  const [group, setGroup] = useState<(typeof groups)[number]>(groups[0]);
-
+export function TopControls({
+  groups,
+  selectedGroup,
+  onGroupChange,
+  weekOffset,
+  onPreviousWeek,
+  onNextWeek,
+  onToday,
+}: TopControlsProps): JSX.Element {
   const selectedRange = useMemo(() => {
     const anchor = new Date();
     anchor.setDate(anchor.getDate() + weekOffset * 7);
@@ -44,8 +51,8 @@ export function TopControls({ weekOffset, onPreviousWeek, onNextWeek, onToday }:
   return (
     <div className="flex flex-wrap items-center justify-end gap-3">
       <select
-        value={group}
-        onChange={(event) => setGroup(event.target.value as (typeof groups)[number])}
+        value={selectedGroup}
+        onChange={(event) => onGroupChange(event.target.value)}
         className="max-w-[220px] rounded-lg border border-line bg-panel px-3 py-2 text-sm font-semibold text-textMain outline-none transition focus:border-accent"
       >
         {groups.map((clubGroup) => (
