@@ -11,7 +11,7 @@ npm install
 ## 2. Configure Supabase
 
 1. Create a project in [Supabase](https://supabase.com).
-2. In Supabase SQL Editor, run `SUPABASE_SETUP.sql`.
+2. In Supabase SQL Editor, run `SUPABASE_SETUP.sql` (this also adds history comment + photos columns).
 3. Go to `Project Settings -> API` and copy:
    - `Project URL`
    - `anon public` key

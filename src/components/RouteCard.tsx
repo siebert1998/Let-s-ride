@@ -242,7 +242,7 @@ export function RouteCard({ title, storageId, initialNotes = '' }: RouteCardProp
               void persistRoute();
             }
           }}
-          placeholder="Road condition, pace plan, meetup notes..."
+          placeholder="Startpunt, tijdstip, pace,..."
           className="min-h-[82px] flex-1 resize-none rounded-lg border border-line bg-panelSoft px-3 py-2 text-sm text-textMain outline-none ring-0 transition placeholder:text-textMuted focus:border-accent"
         />
       </label>
