@@ -146,6 +146,7 @@ function RideHistoryCard({ ride, onSaved }: RideHistoryCardProps): JSX.Element {
   const [photos, setPhotos] = useState<string[]>(ride.photos);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
 
   useEffect(() => {
     setComment(ride.historyComment);
@@ -224,7 +225,21 @@ function RideHistoryCard({ ride, onSaved }: RideHistoryCardProps): JSX.Element {
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
             {photos.map((photo, index) => (
               <div key={`${ride.slotKey}-photo-${index}`} className="relative overflow-hidden rounded-lg border border-line">
-                <img src={photo} alt={`Ride photo ${index + 1}`} className="h-24 w-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => setSelectedPhoto(photo)}
+                  className="block w-full"
+                  aria-label={`Bekijk foto ${index + 1} groot`}
+                >
+                  <img src={photo} alt={`Ride photo ${index + 1}`} className="h-24 w-full object-cover" />
+                </button>
+                <a
+                  href={photo}
+                  download={`rit-${ride.title.replace(/\s+/g, '-').toLowerCase()}-foto-${index + 1}.jpg`}
+                  className="absolute bottom-1 left-1 rounded bg-black/80 px-2 py-1 text-[10px] font-semibold text-white"
+                >
+                  Download
+                </a>
                 <button
                   type="button"
                   onClick={() => setPhotos((currentPhotos) => currentPhotos.filter((_, photoIndex) => photoIndex !== index))}
@@ -251,6 +266,31 @@ function RideHistoryCard({ ride, onSaved }: RideHistoryCardProps): JSX.Element {
       >
         {isSaving ? 'Opslaan...' : 'Opslaan'}
       </button>
+
+      {selectedPhoto ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="relative w-full max-w-4xl rounded-xl border border-line bg-panel p-3">
+            <button
+              type="button"
+              onClick={() => setSelectedPhoto(null)}
+              className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-black text-white"
+              aria-label="Sluit grote foto"
+            >
+              ×
+            </button>
+            <img src={selectedPhoto} alt="Grote ritfoto" className="max-h-[75vh] w-full rounded-lg object-contain" />
+            <div className="mt-3 flex justify-end">
+              <a
+                href={selectedPhoto}
+                download={`rit-${ride.title.replace(/\s+/g, '-').toLowerCase()}-foto-groot.jpg`}
+                className="rounded-lg bg-accent px-3 py-2 text-xs font-bold text-black transition hover:bg-accentStrong"
+              >
+                Download foto
+              </a>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </article>
   );
 }
