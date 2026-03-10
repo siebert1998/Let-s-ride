@@ -130,12 +130,12 @@ function App(): JSX.Element {
 
       {activePage === 'dashboard' ? (
         <main className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {routeSlots.map((slot, index) => (
+          {routeSlots.map((slot) => (
             <RouteCard
               key={`${selectedGroup}-${slot.key}`}
               title={slot.title}
               storageId={`group-${selectedGroup}-day-${slot.key}`}
-              initialNotes={index > 3 ? 'Weekend focus route.' : ''}
+              initialNotes=""
             />
           ))}
         </main>
