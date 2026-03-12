@@ -48,6 +48,22 @@ const formatRideDate = (dateKey: string | null): string => {
   }).format(date);
 };
 
+const isPastDateKey = (dateKey: string | null): boolean => {
+  if (!dateKey) {
+    return false;
+  }
+
+  const rideDate = new Date(`${dateKey}T00:00:00`);
+  if (Number.isNaN(rideDate.getTime())) {
+    return false;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return rideDate.getTime() < today.getTime();
+};
+
 const readAsDataUrl = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -154,6 +170,8 @@ function RideHistoryCard({ ride, onSaved }: RideHistoryCardProps): JSX.Element {
   }, [ride.historyComment, ride.photos]);
 
   const rideDate = formatRideDate(extractRideDateFromSlotKey(ride.slotKey));
+  const rideDateKey = extractRideDateFromSlotKey(ride.slotKey);
+  const isRidePassed = isPastDateKey(rideDateKey);
 
   const handlePhotoUpload = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const files = Array.from(event.target.files ?? []);
@@ -194,8 +212,14 @@ function RideHistoryCard({ ride, onSaved }: RideHistoryCardProps): JSX.Element {
           <h3 className="text-lg font-bold text-textMain">{ride.title}</h3>
           <p className="text-xs text-textMuted">{rideDate}</p>
         </div>
-        <span className="rounded-md border border-accent/50 bg-accent/10 px-2 py-0.5 text-xs font-semibold text-accent">
-          Gereden
+        <span
+          className={`rounded-md px-2 py-0.5 text-xs font-semibold ${
+            isRidePassed
+              ? 'border border-accent/50 bg-accent/10 text-accent'
+              : 'border border-line bg-panelSoft text-textMuted'
+          }`}
+        >
+          {isRidePassed ? 'Gereden' : 'Gepland'}
         </span>
       </div>
 
