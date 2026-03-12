@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { RideHistoryPage } from './components/RideHistoryPage';
 import { RouteCard } from './components/RouteCard';
 import { TopControls } from './components/TopControls';
+import { fetchCompletedRideDateKeysByGroup } from './services/routes';
 
 interface RouteSlot {
   key: string;
@@ -39,15 +40,37 @@ const toDateKey = (date: Date): string => {
 };
 
 function App(): JSX.Element {
-  const [weekOffset, setWeekOffset] = useState<number>(0);
+  const [weekStartDate, setWeekStartDate] = useState<Date>(getMondayForWeek(new Date()));
   const [selectedGroup, setSelectedGroup] = useState<string>(groups[0]);
   const [activePage, setActivePage] = useState<Page>('dashboard');
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
+  const [filledDateKeys, setFilledDateKeys] = useState<string[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadFilledDays = async (): Promise<void> => {
+      try {
+        const dates = await fetchCompletedRideDateKeysByGroup(selectedGroup);
+        if (!cancelled) {
+          setFilledDateKeys(dates);
+        }
+      } catch {
+        if (!cancelled) {
+          setFilledDateKeys([]);
+        }
+      }
+    };
+
+    void loadFilledDays();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedGroup]);
 
   const routeSlots = useMemo<RouteSlot[]>(() => {
-    const anchor = new Date();
-    anchor.setDate(anchor.getDate() + weekOffset * 7);
-    const monday = getMondayForWeek(anchor);
+    const monday = getMondayForWeek(weekStartDate);
 
     return Array.from({ length: 7 }, (_, index) => {
       const date = new Date(monday);
@@ -57,7 +80,7 @@ function App(): JSX.Element {
         title: formatRouteTitle(date),
       };
     });
-  }, [weekOffset]);
+  }, [weekStartDate]);
 
   return (
     <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
@@ -72,10 +95,24 @@ function App(): JSX.Element {
             groups={groups}
             selectedGroup={selectedGroup}
             onGroupChange={setSelectedGroup}
-            weekOffset={weekOffset}
-            onPreviousWeek={() => setWeekOffset((value) => value - 1)}
-            onNextWeek={() => setWeekOffset((value) => value + 1)}
-            onToday={() => setWeekOffset(0)}
+            weekStartDate={weekStartDate}
+            onPreviousWeek={() =>
+              setWeekStartDate((currentDate) => {
+                const nextDate = new Date(currentDate);
+                nextDate.setDate(nextDate.getDate() - 7);
+                return getMondayForWeek(nextDate);
+              })
+            }
+            onNextWeek={() =>
+              setWeekStartDate((currentDate) => {
+                const nextDate = new Date(currentDate);
+                nextDate.setDate(nextDate.getDate() + 7);
+                return getMondayForWeek(nextDate);
+              })
+            }
+            onToday={() => setWeekStartDate(getMondayForWeek(new Date()))}
+            onSelectWeekDate={(date) => setWeekStartDate(getMondayForWeek(date))}
+            filledDateKeys={filledDateKeys}
           />
 
           <div className="relative">
@@ -93,7 +130,7 @@ function App(): JSX.Element {
             </button>
 
             {isMenuOpen ? (
-              <div className="absolute right-0 top-12 z-20 w-52 rounded-xl border border-line bg-panel p-2 shadow-card">
+              <div className="absolute right-0 top-12 z-[1000] w-52 rounded-xl border border-line bg-panel p-2 shadow-card">
                 <button
                   type="button"
                   onClick={() => {

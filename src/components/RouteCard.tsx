@@ -172,8 +172,6 @@ export function RouteCard({ title, storageId, initialNotes = '' }: RouteCardProp
       await persistRoute({ sourceFile: nextSourceFile, routeData: parsed });
     } catch (parseError) {
       const message = parseError instanceof Error ? parseError.message : 'Unable to read GPX file.';
-      setRouteData(null);
-      setSourceFile(null);
       setError(message);
     } finally {
       setIsLoading(false);

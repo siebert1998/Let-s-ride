@@ -97,6 +97,30 @@ export const fetchCompletedRidesByGroup = async (group: string): Promise<SyncedR
   return (data ?? []).map(toSyncedRoute);
 };
 
+export const fetchCompletedRideDateKeysByGroup = async (group: string): Promise<string[]> => {
+  const supabase = getSupabaseClient();
+  const prefix = `group-${group}-day-`;
+
+  const { data, error } = await supabase
+    .from(ROUTES_TABLE)
+    .select('slot_key')
+    .like('slot_key', `${prefix}%`)
+    .not('gpx_text', 'is', null)
+    .returns<Array<{ slot_key: string }>>();
+
+  if (error) {
+    throw new Error(`Could not load calendar markers: ${error.message}`);
+  }
+
+  const marker = '-day-';
+  return (data ?? [])
+    .map((row) => {
+      const markerIndex = row.slot_key.indexOf(marker);
+      return markerIndex >= 0 ? row.slot_key.slice(markerIndex + marker.length) : null;
+    })
+    .filter((dateKey): dateKey is string => Boolean(dateKey));
+};
+
 export const updateRideHistoryDetails = async (
   slotKey: string,
   historyComment: string,
