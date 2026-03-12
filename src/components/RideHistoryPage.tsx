@@ -29,14 +29,22 @@ const extractRideDateFromSlotKey = (slotKey: string): string | null => {
   return slotKey.slice(markerIndex + marker.length);
 };
 
+const parseDateKey = (dateKey: string | null): Date | null => {
+  if (!dateKey) {
+    return null;
+  }
+
+  const date = new Date(`${dateKey}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
 const formatRideDate = (dateKey: string | null): string => {
   if (!dateKey) {
     return 'Unknown date';
   }
 
-  const date = new Date(`${dateKey}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) {
+  const date = parseDateKey(dateKey);
+  if (!date) {
     return dateKey;
   }
 
@@ -49,12 +57,8 @@ const formatRideDate = (dateKey: string | null): string => {
 };
 
 const isPastDateKey = (dateKey: string | null): boolean => {
-  if (!dateKey) {
-    return false;
-  }
-
-  const rideDate = new Date(`${dateKey}T00:00:00`);
-  if (Number.isNaN(rideDate.getTime())) {
+  const rideDate = parseDateKey(dateKey);
+  if (!rideDate) {
     return false;
   }
 
@@ -62,6 +66,30 @@ const isPastDateKey = (dateKey: string | null): boolean => {
   today.setHours(0, 0, 0, 0);
 
   return rideDate.getTime() < today.getTime();
+};
+
+const getMonthKey = (date: Date | null): string => {
+  if (!date) {
+    return 'unknown';
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+};
+
+const formatMonthLabel = (monthKey: string): string => {
+  if (monthKey === 'unknown') {
+    return 'Onbekende maand';
+  }
+
+  const [year, month] = monthKey.split('-');
+  const monthDate = new Date(Number(year), Number(month) - 1, 1);
+
+  return new Intl.DateTimeFormat('nl-BE', {
+    month: 'long',
+    year: 'numeric',
+  }).format(monthDate);
 };
 
 const readAsDataUrl = (file: File): Promise<string> =>
@@ -108,7 +136,41 @@ export function RideHistoryPage({ selectedGroup }: RideHistoryPageProps): JSX.El
     };
   }, [selectedGroup]);
 
-  const hasRides = useMemo(() => rides.length > 0, [rides]);
+  const rideSections = useMemo(() => {
+    const sortedRides = [...rides].sort((a, b) => {
+      const dateA = parseDateKey(extractRideDateFromSlotKey(a.slotKey));
+      const dateB = parseDateKey(extractRideDateFromSlotKey(b.slotKey));
+
+      if (!dateA && !dateB) return 0;
+      if (!dateA) return 1;
+      if (!dateB) return -1;
+
+      return dateA.getTime() - dateB.getTime();
+    });
+
+    const sections: Array<{ monthKey: string; monthLabel: string; rides: SyncedRoute[] }> = [];
+
+    sortedRides.forEach((ride) => {
+      const rideDate = parseDateKey(extractRideDateFromSlotKey(ride.slotKey));
+      const monthKey = getMonthKey(rideDate);
+      const existingSection = sections.find((section) => section.monthKey === monthKey);
+
+      if (existingSection) {
+        existingSection.rides.push(ride);
+        return;
+      }
+
+      sections.push({
+        monthKey,
+        monthLabel: formatMonthLabel(monthKey),
+        rides: [ride],
+      });
+    });
+
+    return sections;
+  }, [rides]);
+
+  const hasRides = useMemo(() => rideSections.length > 0, [rideSections]);
 
   return (
     <section className="space-y-4">
@@ -131,23 +193,28 @@ export function RideHistoryPage({ selectedGroup }: RideHistoryPageProps): JSX.El
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        {rides.map((ride) => (
-          <RideHistoryCard
-            key={ride.slotKey}
-            ride={ride}
-            onSaved={(comment, photos) => {
-              setRides((currentRides) =>
-                currentRides.map((currentRide) =>
-                  currentRide.slotKey === ride.slotKey
-                    ? { ...currentRide, historyComment: comment, photos, updatedAt: new Date().toISOString() }
-                    : currentRide,
-                ),
-              );
-            }}
-          />
-        ))}
-      </div>
+      {rideSections.map((section) => (
+        <div key={section.monthKey} className="space-y-3">
+          <h3 className="text-sm font-extrabold uppercase tracking-[0.2em] text-textMuted">{section.monthLabel}</h3>
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            {section.rides.map((ride) => (
+              <RideHistoryCard
+                key={ride.slotKey}
+                ride={ride}
+                onSaved={(comment, photos) => {
+                  setRides((currentRides) =>
+                    currentRides.map((currentRide) =>
+                      currentRide.slotKey === ride.slotKey
+                        ? { ...currentRide, historyComment: comment, photos, updatedAt: new Date().toISOString() }
+                        : currentRide,
+                    ),
+                  );
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
     </section>
   );
 }
