@@ -4,6 +4,8 @@ import {
   type SyncedRoute,
   updateRideHistoryDetails,
 } from '../services/routes';
+import { deleteRidePhotoByUrl, uploadRidePhoto } from '../services/photoStorage';
+import { optimizeImageForUpload } from '../utils/image';
 
 interface RideHistoryPageProps {
   selectedGroup: string;
@@ -91,14 +93,6 @@ const formatMonthLabel = (monthKey: string): string => {
     year: 'numeric',
   }).format(monthDate);
 };
-
-const readAsDataUrl = (file: File): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error(`Could not read ${file.name}.`));
-    reader.readAsDataURL(file);
-  });
 
 export function RideHistoryPage({ selectedGroup }: RideHistoryPageProps): JSX.Element {
   const [rides, setRides] = useState<SyncedRoute[]>([]);
@@ -228,6 +222,7 @@ function RideHistoryCard({ ride, onSaved }: RideHistoryCardProps): JSX.Element {
   const [comment, setComment] = useState<string>(ride.historyComment);
   const [photos, setPhotos] = useState<string[]>(ride.photos);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isUploadingPhotos, setIsUploadingPhotos] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
 
@@ -247,14 +242,32 @@ function RideHistoryCard({ ride, onSaved }: RideHistoryCardProps): JSX.Element {
       return;
     }
 
+    setIsUploadingPhotos(true);
     try {
-      const urls = await Promise.all(files.map(readAsDataUrl));
+      const urls = await Promise.all(
+        files.map(async (file) => {
+          const optimized = await optimizeImageForUpload(file);
+          return uploadRidePhoto(ride.slotKey, optimized);
+        }),
+      );
       setPhotos((currentPhotos) => [...currentPhotos, ...urls].slice(0, 10));
       setError('');
     } catch (uploadError) {
       setError(toErrorMessage(uploadError));
     } finally {
+      setIsUploadingPhotos(false);
       event.target.value = '';
+    }
+  };
+
+  const handlePhotoRemove = async (index: number): Promise<void> => {
+    const photoToRemove = photos[index];
+    setPhotos((currentPhotos) => currentPhotos.filter((_, photoIndex) => photoIndex !== index));
+
+    try {
+      await deleteRidePhotoByUrl(photoToRemove);
+    } catch {
+      // Keep UI responsive even if cleanup fails.
     }
   };
 
@@ -308,8 +321,15 @@ function RideHistoryCard({ ride, onSaved }: RideHistoryCardProps): JSX.Element {
       <div className="mt-3">
         <p className="text-sm font-semibold text-textMain">Foto&apos;s</p>
         <label className="mt-2 inline-flex cursor-pointer items-center rounded-lg border border-line bg-panel px-3 py-2 text-xs font-semibold text-textMain transition hover:border-accent hover:text-accent">
-          Voeg foto&apos;s toe
-          <input type="file" accept="image/*" multiple className="hidden" onChange={(event) => void handlePhotoUpload(event)} />
+          {isUploadingPhotos ? 'Foto\'s uploaden...' : 'Voeg foto\'s toe'}
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(event) => void handlePhotoUpload(event)}
+            disabled={isUploadingPhotos}
+          />
         </label>
 
         {photos.length > 0 ? (
@@ -333,7 +353,7 @@ function RideHistoryCard({ ride, onSaved }: RideHistoryCardProps): JSX.Element {
                 </a>
                 <button
                   type="button"
-                  onClick={() => setPhotos((currentPhotos) => currentPhotos.filter((_, photoIndex) => photoIndex !== index))}
+                  onClick={() => void handlePhotoRemove(index)}
                   className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-black/80 text-white"
                   aria-label="Delete photo"
                 >
@@ -352,7 +372,7 @@ function RideHistoryCard({ ride, onSaved }: RideHistoryCardProps): JSX.Element {
       <button
         type="button"
         onClick={() => void handleSave()}
-        disabled={isSaving}
+        disabled={isSaving || isUploadingPhotos}
         className="mt-4 rounded-lg bg-accent px-4 py-2 text-sm font-bold text-black transition hover:bg-accentStrong disabled:cursor-not-allowed disabled:opacity-60"
       >
         {isSaving ? 'Opslaan...' : 'Opslaan'}

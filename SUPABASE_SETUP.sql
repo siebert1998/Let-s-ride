@@ -46,3 +46,37 @@ create policy "Public can delete ride routes"
   for delete
   to anon
   using (true);
+
+insert into storage.buckets (id, name, public)
+values ('ride-photos', 'ride-photos', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "Public read ride photos" on storage.objects;
+drop policy if exists "Public upload ride photos" on storage.objects;
+drop policy if exists "Public update ride photos" on storage.objects;
+drop policy if exists "Public delete ride photos" on storage.objects;
+
+create policy "Public read ride photos"
+  on storage.objects
+  for select
+  to anon
+  using (bucket_id = 'ride-photos');
+
+create policy "Public upload ride photos"
+  on storage.objects
+  for insert
+  to anon
+  with check (bucket_id = 'ride-photos');
+
+create policy "Public update ride photos"
+  on storage.objects
+  for update
+  to anon
+  using (bucket_id = 'ride-photos')
+  with check (bucket_id = 'ride-photos');
+
+create policy "Public delete ride photos"
+  on storage.objects
+  for delete
+  to anon
+  using (bucket_id = 'ride-photos');
