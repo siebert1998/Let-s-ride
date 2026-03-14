@@ -127,14 +127,32 @@ export const updateRideHistoryDetails = async (
   photos: string[],
 ): Promise<void> => {
   const supabase = getSupabaseClient();
+  const sanitizedPhotos = photos
+    .filter((photo) => photo.startsWith('http://') || photo.startsWith('https://'))
+    .map((photo) => photo.slice(0, 2048))
+    .slice(0, 20);
 
-  const { error } = await supabase
-    .from(ROUTES_TABLE)
-    .update({ history_comment: historyComment, photos, updated_at: new Date().toISOString() })
-    .eq('slot_key', slotKey);
+  const attempts = 3;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const { error } = await supabase
+      .from(ROUTES_TABLE)
+      .update({ history_comment: historyComment, photos: sanitizedPhotos, updated_at: new Date().toISOString() })
+      .eq('slot_key', slotKey);
 
-  if (error) {
-    throw new Error(`Could not update ride history details: ${error.message}`);
+    if (!error) {
+      return;
+    }
+
+    const isRetriableTimeout =
+      error.message.toLowerCase().includes('statement timeout') ||
+      error.message.toLowerCase().includes('canceling statement due to statement timeout') ||
+      error.code === '57014';
+
+    if (!isRetriableTimeout || attempt === attempts) {
+      throw new Error(`Could not update ride history details: ${error.message}`);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, attempt * 400));
   }
 };
 
