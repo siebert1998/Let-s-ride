@@ -139,7 +139,7 @@ export function TopControls({
         </button>
 
         {isCalendarOpen ? (
-          <div className="absolute right-0 top-12 z-[1000] w-[320px] rounded-xl border border-line bg-panel p-3 shadow-card">
+          <div className="absolute left-1/2 top-12 z-[1000] w-[320px] -translate-x-1/2 rounded-xl border border-line bg-panel p-3 shadow-card">
             <div className="mb-3 flex items-center justify-between">
               <button
                 type="button"
