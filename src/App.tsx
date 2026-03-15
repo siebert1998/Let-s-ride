@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { RideHistoryPage } from './components/RideHistoryPage';
 import { RouteCard } from './components/RouteCard';
 import { TopControls } from './components/TopControls';
@@ -10,20 +11,25 @@ interface RouteSlot {
 }
 
 type Page = 'dashboard' | 'history';
-type View = 'group-select' | 'app';
 
-interface MainGroup {
-  id: string;
+interface VitessenSubgroup {
   label: string;
+  slug: string;
 }
 
-const mainGroups: readonly MainGroup[] = [
-  { id: 'VZW', label: 'De VZW' },
-  { id: 'AquaMundo Cycling Team', label: 'AquaMundo Cycling Team' },
-  { id: 'Vitessen', label: "Baruma's Vitessen" },
+const VITESSEN_ID = 'Vitessen';
+
+const mainGroups = [
+  { id: 'VZW', label: 'De VZW', path: '/de-vzw' },
+  { id: 'AquaMundo Cycling Team', label: 'AquaMundo Cycling Team', path: '/aquamundo-cycling-team' },
+  { id: VITESSEN_ID, label: "Baruma's Vitessen", path: '/barumas-vitessen' },
 ] as const;
 
-const vitessenSubgroups = ['Groep A', 'Groep B', 'Groep C'] as const;
+const vitessenSubgroups: readonly VitessenSubgroup[] = [
+  { label: 'Groep A', slug: 'groep-a' },
+  { label: 'Groep B', slug: 'groep-b' },
+  { label: 'Groep C', slug: 'groep-c' },
+] as const;
 
 const getMondayForWeek = (anchor: Date): Date => {
   const start = new Date(anchor);
@@ -51,37 +57,33 @@ const toDateKey = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-function App(): JSX.Element {
+interface DashboardShellProps {
+  mainGroupId: string;
+  mainGroupLabel: string;
+  selectedVitessenSubgroup?: string;
+  onVitessenSubgroupChange?: (subgroup: string) => void;
+}
+
+function DashboardShell({
+  mainGroupId,
+  mainGroupLabel,
+  selectedVitessenSubgroup,
+  onVitessenSubgroupChange,
+}: DashboardShellProps): JSX.Element {
   const [weekStartDate, setWeekStartDate] = useState<Date>(getMondayForWeek(new Date()));
-  const [selectedMainGroupId, setSelectedMainGroupId] = useState<string | null>(null);
-  const [selectedVitessenSubgroup, setSelectedVitessenSubgroup] = useState<string>(vitessenSubgroups[0]);
   const [activePage, setActivePage] = useState<Page>('dashboard');
-  const [activeView, setActiveView] = useState<View>('group-select');
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const [filledDateKeys, setFilledDateKeys] = useState<string[]>([]);
-  const selectedMainGroupLabel = useMemo(
-    () => mainGroups.find((group) => group.id === selectedMainGroupId)?.label ?? '',
-    [selectedMainGroupId],
-  );
 
   const effectiveGroupKey = useMemo(() => {
-    if (!selectedMainGroupId) {
-      return '';
+    if (mainGroupId === VITESSEN_ID && selectedVitessenSubgroup) {
+      return `${VITESSEN_ID}-${selectedVitessenSubgroup}`;
     }
 
-    if (selectedMainGroupId === 'Vitessen') {
-      return `Vitessen-${selectedVitessenSubgroup}`;
-    }
-
-    return selectedMainGroupId;
-  }, [selectedMainGroupId, selectedVitessenSubgroup]);
+    return mainGroupId;
+  }, [mainGroupId, selectedVitessenSubgroup]);
 
   useEffect(() => {
-    if (!effectiveGroupKey) {
-      setFilledDateKeys([]);
-      return;
-    }
-
     let cancelled = false;
 
     const loadFilledDays = async (): Promise<void> => {
@@ -117,38 +119,6 @@ function App(): JSX.Element {
     });
   }, [weekStartDate]);
 
-  if (activeView === 'group-select') {
-    return (
-      <div className="mx-auto flex min-h-screen w-full max-w-[900px] items-center justify-center px-4 py-10 sm:px-6">
-        <section className="w-full rounded-xl2 border border-line bg-panel/90 p-6 shadow-card">
-          <p className="text-xs uppercase tracking-[0.2em] text-textMuted">Welkom</p>
-          <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-textMain">Let&apos;s ride</h1>
-          <p className="mt-2 text-sm text-textMuted">Kies eerst je groep om het dashboard te openen.</p>
-
-          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {mainGroups.map((group) => (
-              <button
-                key={group.id}
-                type="button"
-                onClick={() => {
-                  setSelectedMainGroupId(group.id);
-                  setActiveView('app');
-                }}
-                className="rounded-xl border border-line bg-panelSoft px-4 py-5 text-left transition hover:border-accent hover:bg-panel"
-              >
-                <p className="text-sm font-bold text-textMain">{group.label}</p>
-              </button>
-            ))}
-          </div>
-        </section>
-      </div>
-    );
-  }
-
-  if (!selectedMainGroupId) {
-    return <></>;
-  }
-
   return (
     <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
       <header className="mb-6 flex flex-col gap-4 rounded-xl2 border border-line bg-panel/80 p-4 shadow-card md:flex-row md:items-start md:justify-between">
@@ -159,11 +129,11 @@ function App(): JSX.Element {
 
         <div className="flex flex-wrap items-start justify-end gap-3">
           <TopControls
-            selectedMainGroupLabel={selectedMainGroupLabel}
-            showVitessenSubgroups={selectedMainGroupId === 'Vitessen'}
-            vitessenSubgroups={vitessenSubgroups}
-            selectedVitessenSubgroup={selectedVitessenSubgroup}
-            onVitessenSubgroupChange={setSelectedVitessenSubgroup}
+            selectedMainGroupLabel={mainGroupLabel}
+            showVitessenSubgroups={mainGroupId === VITESSEN_ID}
+            vitessenSubgroups={vitessenSubgroups.map((subgroup) => subgroup.label)}
+            selectedVitessenSubgroup={selectedVitessenSubgroup ?? vitessenSubgroups[0].label}
+            onVitessenSubgroupChange={(subgroup) => onVitessenSubgroupChange?.(subgroup)}
             weekStartDate={weekStartDate}
             onPreviousWeek={() =>
               setWeekStartDate((currentDate) => {
@@ -249,6 +219,86 @@ function App(): JSX.Element {
         <RideHistoryPage selectedGroup={effectiveGroupKey} />
       )}
     </div>
+  );
+}
+
+function GroupSelectPage(): JSX.Element {
+  const navigate = useNavigate();
+
+  return (
+    <div className="mx-auto flex min-h-screen w-full max-w-[900px] items-center justify-center px-4 py-10 sm:px-6">
+      <section className="w-full rounded-xl2 border border-line bg-panel/90 p-6 shadow-card">
+        <p className="text-xs uppercase tracking-[0.2em] text-textMuted">Welkom</p>
+        <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-textMain">Let&apos;s ride</h1>
+        <p className="mt-2 text-sm text-textMuted">Kies eerst je groep om het dashboard te openen.</p>
+
+        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {mainGroups.map((group) => (
+            <button
+              key={group.id}
+              type="button"
+              onClick={() => {
+                if (group.id === VITESSEN_ID) {
+                  navigate('/barumas-vitessen/groep-a');
+                  return;
+                }
+
+                navigate(group.path);
+              }}
+              className="rounded-xl border border-line bg-panelSoft px-4 py-5 text-left transition hover:border-accent hover:bg-panel"
+            >
+              <p className="text-sm font-bold text-textMain">{group.label}</p>
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function VzwDashboardPage(): JSX.Element {
+  return <DashboardShell mainGroupId="VZW" mainGroupLabel="De VZW" />;
+}
+
+function AquaMundoDashboardPage(): JSX.Element {
+  return <DashboardShell mainGroupId="AquaMundo Cycling Team" mainGroupLabel="AquaMundo Cycling Team" />;
+}
+
+function VitessenDashboardPage(): JSX.Element {
+  const navigate = useNavigate();
+  const params = useParams<{ subgroupSlug: string }>();
+
+  const subgroup = vitessenSubgroups.find((candidate) => candidate.slug === params.subgroupSlug);
+  if (!subgroup) {
+    return <Navigate to="/barumas-vitessen/groep-a" replace />;
+  }
+
+  return (
+    <DashboardShell
+      mainGroupId={VITESSEN_ID}
+      mainGroupLabel="Baruma's Vitessen"
+      selectedVitessenSubgroup={subgroup.label}
+      onVitessenSubgroupChange={(nextSubgroupLabel) => {
+        const nextSubgroup = vitessenSubgroups.find((candidate) => candidate.label === nextSubgroupLabel);
+        if (!nextSubgroup) {
+          return;
+        }
+
+        navigate(`/barumas-vitessen/${nextSubgroup.slug}`);
+      }}
+    />
+  );
+}
+
+function App(): JSX.Element {
+  return (
+    <Routes>
+      <Route path="/" element={<GroupSelectPage />} />
+      <Route path="/de-vzw" element={<VzwDashboardPage />} />
+      <Route path="/aquamundo-cycling-team" element={<AquaMundoDashboardPage />} />
+      <Route path="/barumas-vitessen/:subgroupSlug" element={<VitessenDashboardPage />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
 
