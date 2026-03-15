@@ -33,9 +33,11 @@ const formatWeekRange = (weekStart: Date): string => {
 };
 
 interface TopControlsProps {
-  groups: readonly string[];
-  selectedGroup: string;
-  onGroupChange: (group: string) => void;
+  selectedMainGroupLabel: string;
+  showVitessenSubgroups: boolean;
+  vitessenSubgroups: readonly string[];
+  selectedVitessenSubgroup: string;
+  onVitessenSubgroupChange: (group: string) => void;
   weekStartDate: Date;
   onPreviousWeek: () => void;
   onNextWeek: () => void;
@@ -45,9 +47,11 @@ interface TopControlsProps {
 }
 
 export function TopControls({
-  groups,
-  selectedGroup,
-  onGroupChange,
+  selectedMainGroupLabel,
+  showVitessenSubgroups,
+  vitessenSubgroups,
+  selectedVitessenSubgroup,
+  onVitessenSubgroupChange,
   weekStartDate,
   onPreviousWeek,
   onNextWeek,
@@ -88,17 +92,23 @@ export function TopControls({
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-3">
-      <select
-        value={selectedGroup}
-        onChange={(event) => onGroupChange(event.target.value)}
-        className="max-w-[220px] rounded-lg border border-line bg-panel px-3 py-2 text-sm font-semibold text-textMain outline-none transition focus:border-accent"
-      >
-        {groups.map((clubGroup) => (
-          <option key={clubGroup} value={clubGroup}>
-            {clubGroup}
-          </option>
-        ))}
-      </select>
+      <div className="max-w-[240px] rounded-lg border border-line bg-panel px-3 py-2 text-sm font-semibold text-textMain">
+        {selectedMainGroupLabel}
+      </div>
+
+      {showVitessenSubgroups ? (
+        <select
+          value={selectedVitessenSubgroup}
+          onChange={(event) => onVitessenSubgroupChange(event.target.value)}
+          className="max-w-[160px] rounded-lg border border-line bg-panel px-3 py-2 text-sm font-semibold text-textMain outline-none transition focus:border-accent"
+        >
+          {vitessenSubgroups.map((subgroup) => (
+            <option key={subgroup} value={subgroup}>
+              {subgroup}
+            </option>
+          ))}
+        </select>
+      ) : null}
 
       <div className="relative flex items-center rounded-lg border border-line bg-panel px-2 py-1">
         <button

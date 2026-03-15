@@ -10,8 +10,20 @@ interface RouteSlot {
 }
 
 type Page = 'dashboard' | 'history';
+type View = 'group-select' | 'app';
 
-const groups = ['VZW', 'AquaMundo Cycling Team'] as const;
+interface MainGroup {
+  id: string;
+  label: string;
+}
+
+const mainGroups: readonly MainGroup[] = [
+  { id: 'VZW', label: 'De VZW' },
+  { id: 'AquaMundo Cycling Team', label: 'AquaMundo Cycling Team' },
+  { id: 'Vitessen', label: "Baruma's Vitessen" },
+] as const;
+
+const vitessenSubgroups = ['Groep A', 'Groep B', 'Groep C'] as const;
 
 const getMondayForWeek = (anchor: Date): Date => {
   const start = new Date(anchor);
@@ -41,17 +53,40 @@ const toDateKey = (date: Date): string => {
 
 function App(): JSX.Element {
   const [weekStartDate, setWeekStartDate] = useState<Date>(getMondayForWeek(new Date()));
-  const [selectedGroup, setSelectedGroup] = useState<string>(groups[0]);
+  const [selectedMainGroupId, setSelectedMainGroupId] = useState<string | null>(null);
+  const [selectedVitessenSubgroup, setSelectedVitessenSubgroup] = useState<string>(vitessenSubgroups[0]);
   const [activePage, setActivePage] = useState<Page>('dashboard');
+  const [activeView, setActiveView] = useState<View>('group-select');
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const [filledDateKeys, setFilledDateKeys] = useState<string[]>([]);
+  const selectedMainGroupLabel = useMemo(
+    () => mainGroups.find((group) => group.id === selectedMainGroupId)?.label ?? '',
+    [selectedMainGroupId],
+  );
+
+  const effectiveGroupKey = useMemo(() => {
+    if (!selectedMainGroupId) {
+      return '';
+    }
+
+    if (selectedMainGroupId === 'Vitessen') {
+      return `Vitessen-${selectedVitessenSubgroup}`;
+    }
+
+    return selectedMainGroupId;
+  }, [selectedMainGroupId, selectedVitessenSubgroup]);
 
   useEffect(() => {
+    if (!effectiveGroupKey) {
+      setFilledDateKeys([]);
+      return;
+    }
+
     let cancelled = false;
 
     const loadFilledDays = async (): Promise<void> => {
       try {
-        const dates = await fetchCompletedRideDateKeysByGroup(selectedGroup);
+        const dates = await fetchCompletedRideDateKeysByGroup(effectiveGroupKey);
         if (!cancelled) {
           setFilledDateKeys(dates);
         }
@@ -67,7 +102,7 @@ function App(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [selectedGroup]);
+  }, [effectiveGroupKey]);
 
   const routeSlots = useMemo<RouteSlot[]>(() => {
     const monday = getMondayForWeek(weekStartDate);
@@ -82,6 +117,38 @@ function App(): JSX.Element {
     });
   }, [weekStartDate]);
 
+  if (activeView === 'group-select') {
+    return (
+      <div className="mx-auto flex min-h-screen w-full max-w-[900px] items-center justify-center px-4 py-10 sm:px-6">
+        <section className="w-full rounded-xl2 border border-line bg-panel/90 p-6 shadow-card">
+          <p className="text-xs uppercase tracking-[0.2em] text-textMuted">Welkom</p>
+          <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-textMain">Let&apos;s ride</h1>
+          <p className="mt-2 text-sm text-textMuted">Kies eerst je groep om het dashboard te openen.</p>
+
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {mainGroups.map((group) => (
+              <button
+                key={group.id}
+                type="button"
+                onClick={() => {
+                  setSelectedMainGroupId(group.id);
+                  setActiveView('app');
+                }}
+                className="rounded-xl border border-line bg-panelSoft px-4 py-5 text-left transition hover:border-accent hover:bg-panel"
+              >
+                <p className="text-sm font-bold text-textMain">{group.label}</p>
+              </button>
+            ))}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  if (!selectedMainGroupId) {
+    return <></>;
+  }
+
   return (
     <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
       <header className="mb-6 flex flex-col gap-4 rounded-xl2 border border-line bg-panel/80 p-4 shadow-card md:flex-row md:items-start md:justify-between">
@@ -92,9 +159,11 @@ function App(): JSX.Element {
 
         <div className="flex flex-wrap items-start justify-end gap-3">
           <TopControls
-            groups={groups}
-            selectedGroup={selectedGroup}
-            onGroupChange={setSelectedGroup}
+            selectedMainGroupLabel={selectedMainGroupLabel}
+            showVitessenSubgroups={selectedMainGroupId === 'Vitessen'}
+            vitessenSubgroups={vitessenSubgroups}
+            selectedVitessenSubgroup={selectedVitessenSubgroup}
+            onVitessenSubgroupChange={setSelectedVitessenSubgroup}
             weekStartDate={weekStartDate}
             onPreviousWeek={() =>
               setWeekStartDate((currentDate) => {
@@ -169,15 +238,15 @@ function App(): JSX.Element {
         <main className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {routeSlots.map((slot) => (
             <RouteCard
-              key={`${selectedGroup}-${slot.key}`}
+              key={`${effectiveGroupKey}-${slot.key}`}
               title={slot.title}
-              storageId={`group-${selectedGroup}-day-${slot.key}`}
+              storageId={`group-${effectiveGroupKey}-day-${slot.key}`}
               initialNotes=""
             />
           ))}
         </main>
       ) : (
-        <RideHistoryPage selectedGroup={selectedGroup} />
+        <RideHistoryPage selectedGroup={effectiveGroupKey} />
       )}
     </div>
   );
