@@ -29,6 +29,7 @@ const vitessenSubgroups: readonly VitessenSubgroup[] = [
   { label: 'Groep A', slug: 'groep-a' },
   { label: 'Groep B', slug: 'groep-b' },
   { label: 'Groep C', slug: 'groep-c' },
+  { label: 'Social rides', slug: 'social-rides' },
 ] as const;
 
 const getMondayForWeek = (anchor: Date): Date => {
