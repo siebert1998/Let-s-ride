@@ -97,6 +97,25 @@ export const fetchCompletedRidesByGroup = async (group: string): Promise<SyncedR
   return (data ?? []).map(toSyncedRoute);
 };
 
+export const fetchPlannerDraftsByGroup = async (group: string): Promise<SyncedRoute[]> => {
+  const supabase = getSupabaseClient();
+  const prefix = `plan-group-${group}-draft-`;
+
+  const { data, error } = await supabase
+    .from(ROUTES_TABLE)
+    .select(selectFields)
+    .like('slot_key', `${prefix}%`)
+    .not('gpx_text', 'is', null)
+    .order('updated_at', { ascending: true })
+    .returns<RideRouteRow[]>();
+
+  if (error) {
+    throw new Error(`Could not load planner drafts: ${error.message}`);
+  }
+
+  return (data ?? []).map(toSyncedRoute);
+};
+
 export const fetchCompletedRideDateKeysByGroup = async (group: string): Promise<string[]> => {
   const supabase = getSupabaseClient();
   const prefix = `group-${group}-day-`;
@@ -185,5 +204,15 @@ export const upsertRouteForSlot = async (input: UpsertRouteInput): Promise<void>
 
   if (error) {
     throw new Error(`Could not save route: ${error.message}`);
+  }
+};
+
+export const deleteRouteBySlot = async (slotKey: string): Promise<void> => {
+  const supabase = getSupabaseClient();
+
+  const { error } = await supabase.from(ROUTES_TABLE).delete().eq('slot_key', slotKey);
+
+  if (error) {
+    throw new Error(`Could not delete route: ${error.message}`);
   }
 };

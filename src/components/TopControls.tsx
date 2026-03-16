@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
+const weekDayLabels = ['Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag', 'Zaterdag', 'Zondag'] as const;
+
 const getMondayForWeek = (anchor: Date): Date => {
   const start = new Date(anchor);
   start.setHours(0, 0, 0, 0);
@@ -44,6 +46,8 @@ interface TopControlsProps {
   onToday: () => void;
   onSelectWeekDate: (date: Date) => void;
   filledDateKeys: string[];
+  selectedDayIndexes: number[];
+  onSaveDayIndexes: (indexes: number[]) => void;
 }
 
 export function TopControls({
@@ -58,13 +62,21 @@ export function TopControls({
   onToday,
   onSelectWeekDate,
   filledDateKeys,
+  selectedDayIndexes,
+  onSaveDayIndexes,
 }: TopControlsProps): JSX.Element {
   const [isCalendarOpen, setIsCalendarOpen] = useState<boolean>(false);
+  const [isDayFilterOpen, setIsDayFilterOpen] = useState<boolean>(false);
   const [calendarMonth, setCalendarMonth] = useState<Date>(getStartOfMonth(weekStartDate));
+  const [draftDayIndexes, setDraftDayIndexes] = useState<number[]>(selectedDayIndexes);
 
   useEffect(() => {
     setCalendarMonth(getStartOfMonth(weekStartDate));
   }, [weekStartDate]);
+
+  useEffect(() => {
+    setDraftDayIndexes(selectedDayIndexes);
+  }, [selectedDayIndexes]);
 
   const selectedRange = useMemo(() => formatWeekRange(weekStartDate), [weekStartDate]);
 
@@ -89,6 +101,12 @@ export function TopControls({
       return date;
     });
   }, [calendarMonth]);
+
+  const toggleDraftDay = (dayIndex: number): void => {
+    setDraftDayIndexes((current) =>
+      current.includes(dayIndex) ? current.filter((value) => value !== dayIndex) : [...current, dayIndex],
+    );
+  };
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-3">
@@ -122,7 +140,10 @@ export function TopControls({
 
         <button
           type="button"
-          onClick={() => setIsCalendarOpen((value) => !value)}
+          onClick={() => {
+            setIsCalendarOpen((value) => !value);
+            setIsDayFilterOpen(false);
+          }}
           className="rounded-md px-2 py-1 text-sm font-semibold text-textMain transition hover:bg-panelSoft"
           aria-label="Open calendar"
         >
@@ -196,6 +217,48 @@ export function TopControls({
                 );
               })}
             </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => {
+            setIsDayFilterOpen((value) => !value);
+            setIsCalendarOpen(false);
+          }}
+          className="rounded-lg border border-line bg-panel px-3 py-2 text-sm font-semibold text-textMain transition hover:border-accent hover:text-accent"
+        >
+          Filter dagen
+        </button>
+
+        {isDayFilterOpen ? (
+          <div className="absolute right-0 top-12 z-[1000] w-56 rounded-xl border border-line bg-panel p-3 shadow-card">
+            <p className="text-xs font-semibold uppercase tracking-wide text-textMuted">Toon dagen</p>
+            <div className="mt-2 space-y-1">
+              {weekDayLabels.map((label, dayIndex) => (
+                <label key={label} className="flex items-center gap-2 rounded-md px-1 py-1 text-sm text-textMain">
+                  <input
+                    type="checkbox"
+                    checked={draftDayIndexes.includes(dayIndex)}
+                    onChange={() => toggleDraftDay(dayIndex)}
+                    className="h-4 w-4 accent-accent"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onSaveDayIndexes([...draftDayIndexes].sort((a, b) => a - b));
+                setIsDayFilterOpen(false);
+              }}
+              className="mt-3 w-full rounded-lg bg-accent px-3 py-2 text-xs font-bold text-black transition hover:bg-accentStrong"
+            >
+              Opslaan
+            </button>
           </div>
         ) : null}
       </div>

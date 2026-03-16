@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import { PlannerPage } from './components/PlannerPage';
 import { RideHistoryPage } from './components/RideHistoryPage';
 import { RouteCard } from './components/RouteCard';
 import { TopControls } from './components/TopControls';
@@ -8,9 +9,10 @@ import { fetchCompletedRideDateKeysByGroup } from './services/routes';
 interface RouteSlot {
   key: string;
   title: string;
+  dayIndex: number;
 }
 
-type Page = 'dashboard' | 'history';
+type Page = 'dashboard' | 'history' | 'planner';
 
 interface VitessenSubgroup {
   label: string;
@@ -18,6 +20,7 @@ interface VitessenSubgroup {
 }
 
 const VITESSEN_ID = 'Vitessen';
+const defaultDayIndexes = [0, 1, 2, 3, 4, 5, 6];
 
 const mainGroups = [
   { id: 'VZW', label: 'De VZW', path: '/de-vzw' },
@@ -75,6 +78,8 @@ function DashboardShell({
   const [activePage, setActivePage] = useState<Page>('dashboard');
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const [filledDateKeys, setFilledDateKeys] = useState<string[]>([]);
+  const [selectedDayIndexes, setSelectedDayIndexes] = useState<number[]>(defaultDayIndexes);
+  const [refreshTick, setRefreshTick] = useState<number>(0);
 
   const effectiveGroupKey = useMemo(() => {
     if (mainGroupId === VITESSEN_ID && selectedVitessenSubgroup) {
@@ -83,6 +88,29 @@ function DashboardShell({
 
     return mainGroupId;
   }, [mainGroupId, selectedVitessenSubgroup]);
+
+  useEffect(() => {
+    const storageKey = `letsride:day-filter:${effectiveGroupKey}`;
+    const raw = localStorage.getItem(storageKey);
+
+    if (!raw) {
+      setSelectedDayIndexes(defaultDayIndexes);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) {
+        setSelectedDayIndexes(defaultDayIndexes);
+        return;
+      }
+
+      const nextIndexes = parsed.filter((value): value is number => Number.isInteger(value) && value >= 0 && value <= 6);
+      setSelectedDayIndexes(nextIndexes.length > 0 ? [...new Set(nextIndexes)].sort((a, b) => a - b) : []);
+    } catch {
+      setSelectedDayIndexes(defaultDayIndexes);
+    }
+  }, [effectiveGroupKey, refreshTick]);
 
   useEffect(() => {
     let cancelled = false;
@@ -116,9 +144,15 @@ function DashboardShell({
       return {
         key: toDateKey(date),
         title: formatRouteTitle(date),
+        dayIndex: index,
       };
     });
   }, [weekStartDate]);
+
+  const visibleRouteSlots = useMemo(
+    () => routeSlots.filter((slot) => selectedDayIndexes.includes(slot.dayIndex)),
+    [routeSlots, selectedDayIndexes],
+  );
 
   return (
     <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
@@ -153,6 +187,11 @@ function DashboardShell({
             onToday={() => setWeekStartDate(getMondayForWeek(new Date()))}
             onSelectWeekDate={(date) => setWeekStartDate(getMondayForWeek(date))}
             filledDateKeys={filledDateKeys}
+            selectedDayIndexes={selectedDayIndexes}
+            onSaveDayIndexes={(indexes) => {
+              setSelectedDayIndexes(indexes);
+              localStorage.setItem(`letsride:day-filter:${effectiveGroupKey}`, JSON.stringify(indexes));
+            }}
           />
 
           <div className="relative">
@@ -188,6 +227,20 @@ function DashboardShell({
                 <button
                   type="button"
                   onClick={() => {
+                    setActivePage('planner');
+                    setIsMenuOpen(false);
+                  }}
+                  className={`mt-1 w-full rounded-lg px-3 py-2 text-left text-sm font-semibold transition ${
+                    activePage === 'planner'
+                      ? 'bg-accent text-black'
+                      : 'text-textMain hover:bg-panelSoft hover:text-accent'
+                  }`}
+                >
+                  Ritplanner
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
                     setActivePage('history');
                     setIsMenuOpen(false);
                   }}
@@ -206,16 +259,32 @@ function DashboardShell({
       </header>
 
       {activePage === 'dashboard' ? (
-        <main className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {routeSlots.map((slot) => (
-            <RouteCard
-              key={`${effectiveGroupKey}-${slot.key}`}
-              title={slot.title}
-              storageId={`group-${effectiveGroupKey}-day-${slot.key}`}
-              initialNotes=""
-            />
-          ))}
-        </main>
+        visibleRouteSlots.length > 0 ? (
+          <main className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {visibleRouteSlots.map((slot) => (
+              <RouteCard
+                key={`${effectiveGroupKey}-${slot.key}`}
+                title={slot.title}
+                storageId={`group-${effectiveGroupKey}-day-${slot.key}`}
+                initialNotes=""
+              />
+            ))}
+          </main>
+        ) : (
+          <div className="rounded-xl2 border border-line/80 bg-panel/95 p-5 text-sm text-textMuted shadow-card">
+            Geen dagen geselecteerd. Open "Filter dagen" en kies minstens 1 dag.
+          </div>
+        )
+      ) : activePage === 'planner' ? (
+        <PlannerPage
+          effectiveGroupKey={effectiveGroupKey}
+          onRouteSaved={(dateKey) => {
+            const date = new Date(`${dateKey}T00:00:00`);
+            setWeekStartDate(getMondayForWeek(date));
+            setRefreshTick((current) => current + 1);
+            setActivePage('dashboard');
+          }}
+        />
       ) : (
         <RideHistoryPage selectedGroup={effectiveGroupKey} />
       )}
