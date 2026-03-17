@@ -376,7 +376,7 @@ function GroupSelectionPage(): JSX.Element {
           <button
             key={group.slug}
             type="button"
-            onClick={() => navigate(`/group/${group.slug}`)}
+            onClick={() => navigate(`/${group.slug}`)}
             className="rounded-xl2 border border-line/80 bg-panel/95 p-5 text-left shadow-card transition hover:border-accent/60"
           >
             <p className="text-base font-bold text-textMain">{group.label}</p>
@@ -389,12 +389,12 @@ function GroupSelectionPage(): JSX.Element {
 }
 
 function GroupDashboardRoute(): JSX.Element {
-  const params = useParams<{ groupSlug: string }>();
+  const params = useParams<{ slug: string }>();
   const navigate = useNavigate();
 
   const group = useMemo(
-    () => APP_GROUPS.find((candidate) => candidate.slug === params.groupSlug) ?? null,
-    [params.groupSlug],
+    () => APP_GROUPS.find((candidate) => candidate.slug === params.slug) ?? null,
+    [params.slug],
   );
 
   const subgroupOptions = useMemo(() => {
@@ -416,7 +416,7 @@ function GroupDashboardRoute(): JSX.Element {
       group={group}
       subgroupOptions={subgroupOptions}
       onSubgroupChange={(slug) => {
-        navigate(`/group/${slug}`);
+        navigate(`/${slug}`);
       }}
     />
   );
@@ -426,7 +426,7 @@ function App(): JSX.Element {
   return (
     <Routes>
       <Route path="/" element={<GroupSelectionPage />} />
-      <Route path="/group/:groupSlug" element={<GroupDashboardRoute />} />
+      <Route path="/:slug" element={<GroupDashboardRoute />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
