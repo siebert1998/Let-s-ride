@@ -26,8 +26,7 @@ export interface GroupMembership {
 
 export interface CreateGroupInput {
   name: string;
-  mainGroup: string;
-  subgroup?: string;
+  subgroups?: string[];
   visibilityType: GroupVisibility;
 }
 
@@ -366,43 +365,59 @@ export const createGroupAndJoinAsAdmin = async (userId: string, input: CreateGro
     throw new Error('Groepsnaam is verplicht.');
   }
 
-  const cleanSubgroup = input.subgroup?.trim() || null;
   const suffix = Date.now().toString(36);
-  const rawSlug = cleanSubgroup ? `${baseName}-${cleanSubgroup}` : baseName;
-  const slug = `${slugify(rawSlug)}-${suffix}`;
-  const effectiveGroupKey = cleanSubgroup ? `${input.mainGroup}-${cleanSubgroup}` : input.mainGroup;
+  const cleanSubgroups = (input.subgroups ?? [])
+    .map((subgroup) => subgroup.trim())
+    .filter((subgroup, index, values) => subgroup.length > 0 && values.indexOf(subgroup) === index);
 
-  const { data: createdGroup, error: createGroupError } = await supabase
+  const groupsToCreate =
+    cleanSubgroups.length > 0
+      ? cleanSubgroups.map((subgroup, index) => ({
+          slug: `${slugify(`${baseName}-${subgroup}`)}-${suffix}-${index + 1}`,
+          name: baseName,
+          main_group: baseName,
+          subgroup,
+          visibility_type: input.visibilityType,
+          effective_group_key: `${baseName}-${subgroup}-${suffix}-${index + 1}`,
+          admin_required_for_ride_changes: true,
+        }))
+      : [
+          {
+            slug: `${slugify(baseName)}-${suffix}`,
+            name: baseName,
+            main_group: baseName,
+            subgroup: null,
+            visibility_type: input.visibilityType,
+            effective_group_key: `${baseName}-${suffix}`,
+            admin_required_for_ride_changes: true,
+          },
+        ];
+
+  const { data: createdGroups, error: createGroupError } = await supabase
     .from(GROUPS_TABLE)
-    .insert({
-      slug,
-      name: baseName,
-      main_group: input.mainGroup,
-      subgroup: cleanSubgroup,
-      visibility_type: input.visibilityType,
-      effective_group_key: `${effectiveGroupKey}-${suffix}`,
-      admin_required_for_ride_changes: true,
-    })
+    .insert(groupsToCreate)
     .select(
       'id, slug, name, main_group, subgroup, visibility_type, effective_group_key, admin_required_for_ride_changes',
     )
-    .single<GroupRow>();
+    .returns<GroupRow[]>();
 
-  if (createGroupError || !createdGroup) {
+  if (createGroupError || !createdGroups || createdGroups.length === 0) {
     throw new Error(`Could not create group: ${createGroupError?.message ?? 'Unknown error'}`);
   }
 
-  const { error: membershipError } = await supabase.from(MEMBERSHIPS_TABLE).insert({
-    user_id: userId,
-    group_id: createdGroup.id,
-    role: 'admin',
-    status: 'active',
-    updated_at: new Date().toISOString(),
-  });
+  const { error: membershipError } = await supabase.from(MEMBERSHIPS_TABLE).insert(
+    createdGroups.map((group) => ({
+      user_id: userId,
+      group_id: group.id,
+      role: 'admin',
+      status: 'active',
+      updated_at: new Date().toISOString(),
+    })),
+  );
 
   if (membershipError) {
     throw new Error(`Could not assign admin membership: ${membershipError.message}`);
   }
 
-  return mapGroup(createdGroup);
+  return mapGroup(createdGroups[0]);
 };

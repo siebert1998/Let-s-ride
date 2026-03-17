@@ -31,7 +31,6 @@ interface RouteSlot {
 
 type Page = 'dashboard' | 'history' | 'planner' | 'requests' | 'members';
 
-const VITESSEN_MAIN_GROUP = 'Vitessen';
 const defaultDayIndexes = [0, 1, 2, 3, 4, 5, 6];
 
 const getMondayForWeek = (anchor: Date): Date => {
@@ -158,6 +157,7 @@ function DashboardShell({
   );
 
   const selectedVitessenLabel = group.subgroup ?? vitessenOptions[0]?.label ?? '';
+  const showSubgroupSwitcher = vitessenOptions.length > 1;
 
   return (
     <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
@@ -167,7 +167,7 @@ function DashboardShell({
         <div className="flex flex-wrap items-start justify-end gap-3">
           <TopControls
             selectedMainGroupLabel={group.name}
-            showVitessenSubgroups={group.mainGroup === VITESSEN_MAIN_GROUP}
+            showVitessenSubgroups={showSubgroupSwitcher}
             vitessenSubgroups={vitessenOptions.map((option) => option.label)}
             selectedVitessenSubgroup={selectedVitessenLabel}
             onVitessenSubgroupChange={(subgroupLabel) => {
@@ -429,24 +429,17 @@ function GroupDashboardRoute({ user, onSignOut }: GroupDashboardRouteProps): JSX
         setIsAuthorized(true);
         setIsAdmin(membership.role === 'admin');
 
-        if (loadedGroup.mainGroup === VITESSEN_MAIN_GROUP) {
-          const [allGroups, userMemberships] = await Promise.all([
-            fetchGroups('', 'all'),
-            fetchMembershipsForUser(user.id),
-          ]);
+        const [allGroups, userMemberships] = await Promise.all([fetchGroups('', 'all'), fetchMembershipsForUser(user.id)]);
 
-          const activeGroupIds = new Set(
-            userMemberships.filter((candidate) => candidate.status === 'active').map((candidate) => candidate.groupId),
-          );
+        const activeGroupIds = new Set(
+          userMemberships.filter((candidate) => candidate.status === 'active').map((candidate) => candidate.groupId),
+        );
 
-          const options = allGroups
-            .filter((candidate) => candidate.mainGroup === VITESSEN_MAIN_GROUP && activeGroupIds.has(candidate.id))
-            .map((candidate) => ({ label: candidate.subgroup ?? candidate.name, slug: candidate.slug }));
+        const options = allGroups
+          .filter((candidate) => candidate.mainGroup === loadedGroup.mainGroup && activeGroupIds.has(candidate.id))
+          .map((candidate) => ({ label: candidate.subgroup ?? candidate.name, slug: candidate.slug }));
 
-          setVitessenOptions(options);
-        } else {
-          setVitessenOptions([]);
-        }
+        setVitessenOptions(options);
       } catch {
         if (!cancelled) {
           setIsAuthorized(false);

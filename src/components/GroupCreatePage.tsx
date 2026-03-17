@@ -6,13 +6,10 @@ interface GroupCreatePageProps {
   userId: string;
 }
 
-const mainGroupOptions = ['VZW', 'AquaMundo Cycling Team', 'Vitessen'] as const;
-
 export function GroupCreatePage({ userId }: GroupCreatePageProps): JSX.Element {
   const navigate = useNavigate();
   const [name, setName] = useState<string>('');
-  const [mainGroup, setMainGroup] = useState<string>(mainGroupOptions[0]);
-  const [subgroup, setSubgroup] = useState<string>('');
+  const [subgroups, setSubgroups] = useState<string[]>([]);
   const [visibilityType, setVisibilityType] = useState<GroupVisibility>('open');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
@@ -25,8 +22,7 @@ export function GroupCreatePage({ userId }: GroupCreatePageProps): JSX.Element {
     try {
       const createdGroup = await createGroupAndJoinAsAdmin(userId, {
         name,
-        mainGroup,
-        subgroup: subgroup || undefined,
+        subgroups,
         visibilityType,
       });
 
@@ -53,24 +49,46 @@ export function GroupCreatePage({ userId }: GroupCreatePageProps): JSX.Element {
             className="w-full rounded-lg border border-line bg-panelSoft px-3 py-2 text-sm text-textMain outline-none transition focus:border-accent"
           />
 
-          <select
-            value={mainGroup}
-            onChange={(event) => setMainGroup(event.target.value)}
-            className="w-full rounded-lg border border-line bg-panelSoft px-3 py-2 text-sm text-textMain outline-none transition focus:border-accent"
-          >
-            {mainGroupOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+          <div className="rounded-lg border border-line bg-panelSoft p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-textMuted">Subgroepen (optioneel)</p>
+              <button
+                type="button"
+                onClick={() => setSubgroups((current) => [...current, ''])}
+                className="rounded-md border border-line bg-panel px-2 py-1 text-xs font-semibold text-textMain transition hover:border-accent hover:text-accent"
+              >
+                + Subgroep
+              </button>
+            </div>
 
-          <input
-            value={subgroup}
-            onChange={(event) => setSubgroup(event.target.value)}
-            placeholder="Subgroep (optioneel)"
-            className="w-full rounded-lg border border-line bg-panelSoft px-3 py-2 text-sm text-textMain outline-none transition focus:border-accent"
-          />
+            {subgroups.length === 0 ? <p className="mt-2 text-xs text-textMuted">Geen subgroepen toegevoegd.</p> : null}
+
+            <div className="mt-2 space-y-2">
+              {subgroups.map((subgroup, index) => (
+                <div key={`subgroup-${index}`} className="flex items-center gap-2">
+                  <input
+                    value={subgroup}
+                    onChange={(event) =>
+                      setSubgroups((current) =>
+                        current.map((value, valueIndex) => (valueIndex === index ? event.target.value : value)),
+                      )
+                    }
+                    placeholder={`Subgroep ${index + 1}`}
+                    className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-textMain outline-none transition focus:border-accent"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSubgroups((current) => current.filter((_, valueIndex) => valueIndex !== index))}
+                    className="rounded-md border border-line bg-panel px-2 py-2 text-xs font-semibold text-textMuted transition hover:border-red-400 hover:text-red-300"
+                    aria-label="Verwijder subgroep"
+                    title="Verwijder subgroep"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
 
           <select
             value={visibilityType}
