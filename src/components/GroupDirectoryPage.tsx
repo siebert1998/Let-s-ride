@@ -84,6 +84,21 @@ export function GroupDirectoryPage({ userId }: GroupDirectoryPageProps): JSX.Ele
     }
   };
 
+  const handleGroupClick = async (group: AppGroup): Promise<void> => {
+    const membership = membershipsByGroupId.get(group.id);
+
+    if (membership?.status === 'active') {
+      navigate(`/group/${group.slug}`);
+      return;
+    }
+
+    if (membership?.status === 'pending') {
+      return;
+    }
+
+    await joinGroup(group);
+  };
+
   const labelForStatus = (status: MembershipStatus): string => {
     if (status === 'active') return 'Lid';
     if (status === 'pending') return 'In afwachting';
@@ -131,7 +146,13 @@ export function GroupDirectoryPage({ userId }: GroupDirectoryPageProps): JSX.Ele
           const canOpen = isActive;
 
           return (
-            <article key={group.id} className="rounded-xl2 border border-line/80 bg-panel/95 p-4 shadow-card">
+            <article
+              key={group.id}
+              className="cursor-pointer rounded-xl2 border border-line/80 bg-panel/95 p-4 shadow-card transition hover:border-accent/60"
+              onClick={() => {
+                void handleGroupClick(group);
+              }}
+            >
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <h2 className="text-base font-bold text-textMain">{group.name}</h2>
@@ -158,15 +179,21 @@ export function GroupDirectoryPage({ userId }: GroupDirectoryPageProps): JSX.Ele
                 {canOpen ? (
                   <button
                     type="button"
-                    onClick={() => navigate(`/group/${group.slug}`)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleGroupClick(group);
+                    }}
                     className="rounded-lg bg-accent px-3 py-2 text-xs font-bold text-black transition hover:bg-accentStrong"
                   >
-                    Open groep
+                    Meerijden
                   </button>
                 ) : isPending ? (
                   <button
                     type="button"
                     disabled
+                    onClick={(event) => {
+                      event.stopPropagation();
+                    }}
                     className="rounded-lg border border-line bg-panel px-3 py-2 text-xs font-semibold text-textMuted opacity-70"
                   >
                     In afwachting
@@ -174,10 +201,13 @@ export function GroupDirectoryPage({ userId }: GroupDirectoryPageProps): JSX.Ele
                 ) : (
                   <button
                     type="button"
-                    onClick={() => void joinGroup(group)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleGroupClick(group);
+                    }}
                     className="rounded-lg border border-line bg-panel px-3 py-2 text-xs font-semibold text-textMain transition hover:border-accent hover:text-accent"
                   >
-                    {group.visibilityType === 'open' ? 'Word lid' : 'Vraag toegang'}
+                    {group.visibilityType === 'open' ? 'Meerijden' : 'Vraag toegang'}
                   </button>
                 )}
               </div>
