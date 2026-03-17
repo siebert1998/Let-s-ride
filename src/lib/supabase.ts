@@ -13,7 +13,13 @@ export const getSupabaseClient = (): SupabaseClient => {
   }
 
   if (!supabaseClient) {
-    supabaseClient = createClient(supabaseUrl as string, supabaseAnonKey as string);
+    supabaseClient = createClient(supabaseUrl as string, supabaseAnonKey as string, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    });
   }
 
   return supabaseClient;

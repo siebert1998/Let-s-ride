@@ -80,3 +80,129 @@ create policy "Public delete ride photos"
   for delete
   to anon
   using (bucket_id = 'ride-photos');
+
+create table if not exists public.profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  display_name text not null default '',
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.groups (
+  id uuid primary key default gen_random_uuid(),
+  slug text unique not null,
+  name text not null,
+  main_group text not null,
+  subgroup text,
+  visibility_type text not null check (visibility_type in ('open', 'closed')),
+  effective_group_key text unique not null,
+  created_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.group_memberships (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  group_id uuid not null references public.groups(id) on delete cascade,
+  role text not null default 'member' check (role in ('member', 'admin')),
+  status text not null default 'pending' check (status in ('pending', 'active', 'rejected')),
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  unique (user_id, group_id)
+);
+
+create index if not exists idx_groups_name on public.groups(name);
+create index if not exists idx_groups_main_sub on public.groups(main_group, subgroup);
+create index if not exists idx_memberships_user on public.group_memberships(user_id);
+create index if not exists idx_memberships_group on public.group_memberships(group_id);
+
+insert into public.groups (slug, name, main_group, subgroup, visibility_type, effective_group_key)
+values
+  ('de-vzw', 'De VZW', 'VZW', null, 'open', 'VZW'),
+  ('aquamundo-cycling-team', 'AquaMundo Cycling Team', 'AquaMundo Cycling Team', null, 'closed', 'AquaMundo Cycling Team'),
+  ('barumas-vitessen-groep-a', 'Baruma''s Vitessen - Groep A', 'Vitessen', 'Groep A', 'closed', 'Vitessen-Groep A'),
+  ('barumas-vitessen-groep-b', 'Baruma''s Vitessen - Groep B', 'Vitessen', 'Groep B', 'closed', 'Vitessen-Groep B'),
+  ('barumas-vitessen-groep-c', 'Baruma''s Vitessen - Groep C', 'Vitessen', 'Groep C', 'closed', 'Vitessen-Groep C'),
+  ('barumas-vitessen-social-rides', 'Baruma''s Vitessen - Social rides', 'Vitessen', 'Social rides', 'open', 'Vitessen-Social rides')
+on conflict (slug) do update set
+  name = excluded.name,
+  main_group = excluded.main_group,
+  subgroup = excluded.subgroup,
+  visibility_type = excluded.visibility_type,
+  effective_group_key = excluded.effective_group_key;
+
+alter table public.profiles enable row level security;
+alter table public.groups enable row level security;
+alter table public.group_memberships enable row level security;
+
+drop policy if exists "Users can view own profile" on public.profiles;
+drop policy if exists "Users can upsert own profile" on public.profiles;
+create policy "Users can view own profile"
+  on public.profiles
+  for select
+  to authenticated
+  using (user_id = auth.uid());
+create policy "Users can upsert own profile"
+  on public.profiles
+  for all
+  to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+drop policy if exists "Authenticated users can read groups" on public.groups;
+create policy "Authenticated users can read groups"
+  on public.groups
+  for select
+  to authenticated
+  using (true);
+
+drop policy if exists "Users can read own memberships or admin view" on public.group_memberships;
+drop policy if exists "Users can create own membership" on public.group_memberships;
+drop policy if exists "Users/admin can update memberships" on public.group_memberships;
+create policy "Users can read own memberships or admin view"
+  on public.group_memberships
+  for select
+  to authenticated
+  using (
+    user_id = auth.uid()
+    or exists (
+      select 1
+      from public.group_memberships gm
+      where gm.group_id = group_memberships.group_id
+        and gm.user_id = auth.uid()
+        and gm.role = 'admin'
+        and gm.status = 'active'
+    )
+  );
+
+create policy "Users can create own membership"
+  on public.group_memberships
+  for insert
+  to authenticated
+  with check (user_id = auth.uid());
+
+create policy "Users/admin can update memberships"
+  on public.group_memberships
+  for update
+  to authenticated
+  using (
+    user_id = auth.uid()
+    or exists (
+      select 1
+      from public.group_memberships gm
+      where gm.group_id = group_memberships.group_id
+        and gm.user_id = auth.uid()
+        and gm.role = 'admin'
+        and gm.status = 'active'
+    )
+  )
+  with check (
+    user_id = auth.uid()
+    or exists (
+      select 1
+      from public.group_memberships gm
+      where gm.group_id = group_memberships.group_id
+        and gm.user_id = auth.uid()
+        and gm.role = 'admin'
+        and gm.status = 'active'
+    )
+  );
