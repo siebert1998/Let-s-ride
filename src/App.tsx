@@ -273,6 +273,24 @@ function DashboardShell({
                 >
                   Ritgeschiedenis
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = '/groups';
+                  }}
+                  className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-textMain transition hover:bg-panelSoft hover:text-accent"
+                >
+                  Groepen zoeken
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = '/groups/new';
+                  }}
+                  className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-textMain transition hover:bg-panelSoft hover:text-accent"
+                >
+                  Groep aanmaken
+                </button>
                 {isAdmin ? (
                   <button
                     type="button"
@@ -522,23 +540,11 @@ function AppShell({ user, onSignOut }: { user: User; onSignOut: () => Promise<vo
       />
       <Route
         path="/groups"
-        element={
-          defaultActiveGroupSlug ? (
-            <Navigate to={`/group/${defaultActiveGroupSlug}`} replace />
-          ) : (
-            <GroupDirectoryPage userId={user.id} />
-          )
-        }
+        element={<GroupDirectoryPage userId={user.id} />}
       />
       <Route
         path="/groups/new"
-        element={
-          defaultActiveGroupSlug ? (
-            <Navigate to={`/group/${defaultActiveGroupSlug}`} replace />
-          ) : (
-            <GroupCreatePage userId={user.id} />
-          )
-        }
+        element={<GroupCreatePage userId={user.id} />}
       />
       <Route path="/group/:groupSlug" element={<GroupDashboardRoute user={user} onSignOut={onSignOut} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
