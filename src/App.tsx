@@ -1,26 +1,9 @@
-import { User } from '@supabase/supabase-js';
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
-import { AuthPage } from './components/AuthPage';
-import { GroupCreatePage } from './components/GroupCreatePage';
-import { GroupDirectoryPage } from './components/GroupDirectoryPage';
-import { GroupRequestsPage } from './components/GroupRequestsPage';
-import { GroupStartPage } from './components/GroupStartPage';
-import { MembersPage } from './components/MembersPage';
 import { PlannerPage } from './components/PlannerPage';
 import { RideHistoryPage } from './components/RideHistoryPage';
 import { RouteCard } from './components/RouteCard';
 import { TopControls } from './components/TopControls';
-import { getSupabaseClient } from './lib/supabase';
-import {
-  ensureProfileForUser,
-  ensureGlobalAdminAccessIfEligible,
-  fetchGroupBySlug,
-  fetchGroups,
-  fetchMembershipForGroup,
-  fetchMembershipsForUser,
-  type AppGroup,
-} from './services/groups';
 import { fetchCompletedRideDateKeysByGroup } from './services/routes';
 
 interface RouteSlot {
@@ -29,9 +12,89 @@ interface RouteSlot {
   dayIndex: number;
 }
 
-type Page = 'dashboard' | 'history' | 'planner' | 'requests' | 'members';
+interface AppGroup {
+  id: string;
+  slug: string;
+  name: string;
+  mainGroup: string;
+  subgroup: string | null;
+  visibilityType: 'open' | 'closed';
+  effectiveGroupKey: string;
+  adminRequiredForRideChanges: boolean;
+}
+
+type Page = 'dashboard' | 'history' | 'planner';
 
 const defaultDayIndexes = [0, 1, 2, 3, 4, 5, 6];
+
+const APP_GROUPS: AppGroup[] = [
+  {
+    id: 'de-vzw',
+    slug: 'de-vzw',
+    name: 'De VZW',
+    mainGroup: 'VZW',
+    subgroup: null,
+    visibilityType: 'open',
+    effectiveGroupKey: 'VZW',
+    adminRequiredForRideChanges: false,
+  },
+  {
+    id: 'aquamundo-cycling-team',
+    slug: 'aquamundo-cycling-team',
+    name: 'AquaMundo Cycling Team',
+    mainGroup: 'AquaMundo Cycling Team',
+    subgroup: null,
+    visibilityType: 'open',
+    effectiveGroupKey: 'AquaMundo Cycling Team',
+    adminRequiredForRideChanges: false,
+  },
+  {
+    id: 'barumas-vitessen-groep-a',
+    slug: 'barumas-vitessen-groep-a',
+    name: 'Vitessen Baruma',
+    mainGroup: 'Vitessen Baruma',
+    subgroup: 'Groep A',
+    visibilityType: 'open',
+    effectiveGroupKey: 'Vitessen-Groep A',
+    adminRequiredForRideChanges: false,
+  },
+  {
+    id: 'barumas-vitessen-groep-b',
+    slug: 'barumas-vitessen-groep-b',
+    name: 'Vitessen Baruma',
+    mainGroup: 'Vitessen Baruma',
+    subgroup: 'Groep B',
+    visibilityType: 'open',
+    effectiveGroupKey: 'Vitessen-Groep B',
+    adminRequiredForRideChanges: false,
+  },
+  {
+    id: 'barumas-vitessen-groep-c',
+    slug: 'barumas-vitessen-groep-c',
+    name: 'Vitessen Baruma',
+    mainGroup: 'Vitessen Baruma',
+    subgroup: 'Groep C',
+    visibilityType: 'open',
+    effectiveGroupKey: 'Vitessen-Groep C',
+    adminRequiredForRideChanges: false,
+  },
+  {
+    id: 'barumas-vitessen-social-rides',
+    slug: 'barumas-vitessen-social-rides',
+    name: 'Vitessen Baruma',
+    mainGroup: 'Vitessen Baruma',
+    subgroup: 'Social rides',
+    visibilityType: 'open',
+    effectiveGroupKey: 'Vitessen-Social rides',
+    adminRequiredForRideChanges: false,
+  },
+];
+
+const START_GROUPS = [
+  { label: 'De VZW', slug: 'de-vzw' },
+  { label: 'AquaMundo Cycling Team', slug: 'aquamundo-cycling-team' },
+  { label: 'Vitessen Baruma', slug: 'barumas-vitessen-groep-a' },
+] as const;
 
 const getMondayForWeek = (anchor: Date): Date => {
   const start = new Date(anchor);
@@ -61,35 +124,19 @@ const toDateKey = (date: Date): string => {
 
 interface DashboardShellProps {
   group: AppGroup;
-  isAdmin: boolean;
-  vitessenOptions: Array<{ label: string; slug: string }>;
-  onVitessenSubgroupChange: (slug: string) => void;
-  onSignOut: () => Promise<void>;
+  subgroupOptions: Array<{ label: string; slug: string }>;
+  onSubgroupChange: (slug: string) => void;
 }
 
-function DashboardShell({
-  group,
-  isAdmin,
-  vitessenOptions,
-  onVitessenSubgroupChange,
-  onSignOut,
-}: DashboardShellProps): JSX.Element {
+function DashboardShell({ group, subgroupOptions, onSubgroupChange }: DashboardShellProps): JSX.Element {
   const [weekStartDate, setWeekStartDate] = useState<Date>(getMondayForWeek(new Date()));
   const [activePage, setActivePage] = useState<Page>('dashboard');
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const [filledDateKeys, setFilledDateKeys] = useState<string[]>([]);
   const [selectedDayIndexes, setSelectedDayIndexes] = useState<number[]>(defaultDayIndexes);
   const [refreshTick, setRefreshTick] = useState<number>(0);
-  const [adminRequiredForRideChanges, setAdminRequiredForRideChanges] = useState<boolean>(
-    group.adminRequiredForRideChanges,
-  );
 
   const effectiveGroupKey = group.effectiveGroupKey;
-  const canEditRoutes = !adminRequiredForRideChanges || isAdmin;
-
-  useEffect(() => {
-    setAdminRequiredForRideChanges(group.adminRequiredForRideChanges);
-  }, [group.adminRequiredForRideChanges, group.id]);
 
   useEffect(() => {
     const storageKey = `letsride:day-filter:${effectiveGroupKey}`;
@@ -156,8 +203,8 @@ function DashboardShell({
     [routeSlots, selectedDayIndexes],
   );
 
-  const selectedVitessenLabel = group.subgroup ?? vitessenOptions[0]?.label ?? '';
-  const showSubgroupSwitcher = vitessenOptions.length > 1;
+  const selectedSubgroupLabel = group.subgroup ?? subgroupOptions[0]?.label ?? '';
+  const showSubgroupSwitcher = subgroupOptions.length > 1;
 
   return (
     <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
@@ -168,12 +215,12 @@ function DashboardShell({
           <TopControls
             selectedMainGroupLabel={group.name}
             showVitessenSubgroups={showSubgroupSwitcher}
-            vitessenSubgroups={vitessenOptions.map((option) => option.label)}
-            selectedVitessenSubgroup={selectedVitessenLabel}
+            vitessenSubgroups={subgroupOptions.map((option) => option.label)}
+            selectedVitessenSubgroup={selectedSubgroupLabel}
             onVitessenSubgroupChange={(subgroupLabel) => {
-              const next = vitessenOptions.find((option) => option.label === subgroupLabel);
+              const next = subgroupOptions.find((option) => option.label === subgroupLabel);
               if (next) {
-                onVitessenSubgroupChange(next.slug);
+                onSubgroupChange(next.slug);
               }
             }}
             weekStartDate={weekStartDate}
@@ -248,20 +295,6 @@ function DashboardShell({
                 <button
                   type="button"
                   onClick={() => {
-                    setActivePage('members');
-                    setIsMenuOpen(false);
-                  }}
-                  className={`mt-1 w-full rounded-lg px-3 py-2 text-left text-sm font-semibold transition ${
-                    activePage === 'members'
-                      ? 'bg-accent text-black'
-                      : 'text-textMain hover:bg-panelSoft hover:text-accent'
-                  }`}
-                >
-                  Leden
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
                     setActivePage('history');
                     setIsMenuOpen(false);
                   }}
@@ -272,50 +305,6 @@ function DashboardShell({
                   }`}
                 >
                   Ritgeschiedenis
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    window.location.href = '/groups';
-                  }}
-                  className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-textMain transition hover:bg-panelSoft hover:text-accent"
-                >
-                  Groepen zoeken
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    window.location.href = '/groups/new';
-                  }}
-                  className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-textMain transition hover:bg-panelSoft hover:text-accent"
-                >
-                  Groep aanmaken
-                </button>
-                {isAdmin ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActivePage('requests');
-                      setIsMenuOpen(false);
-                    }}
-                    className={`mt-1 w-full rounded-lg px-3 py-2 text-left text-sm font-semibold transition ${
-                      activePage === 'requests'
-                        ? 'bg-accent text-black'
-                        : 'text-textMain hover:bg-panelSoft hover:text-accent'
-                    }`}
-                  >
-                    Ledenaanvragen
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => {
-                    void onSignOut();
-                    setIsMenuOpen(false);
-                  }}
-                  className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-textMain transition hover:bg-panelSoft hover:text-accent"
-                >
-                  Uitloggen
                 </button>
               </div>
             ) : null}
@@ -332,7 +321,7 @@ function DashboardShell({
                 title={slot.title}
                 storageId={`group-${effectiveGroupKey}-day-${slot.key}`}
                 initialNotes=""
-                canEditRoutes={canEditRoutes}
+                canEditRoutes
               />
             ))}
           </main>
@@ -344,7 +333,7 @@ function DashboardShell({
       ) : activePage === 'planner' ? (
         <PlannerPage
           effectiveGroupKey={effectiveGroupKey}
-          canEditRoutes={canEditRoutes}
+          canEditRoutes
           onRouteSaved={(dateKey) => {
             const date = new Date(`${dateKey}T00:00:00`);
             setWeekStartDate(getMondayForWeek(date));
@@ -352,16 +341,6 @@ function DashboardShell({
             setActivePage('dashboard');
           }}
         />
-      ) : activePage === 'members' ? (
-        <MembersPage
-          groupId={group.id}
-          groupName={group.name}
-          canManageMembers={isAdmin}
-          adminRequiredForRideChanges={adminRequiredForRideChanges}
-          onAdminRequiredChanged={setAdminRequiredForRideChanges}
-        />
-      ) : activePage === 'requests' ? (
-        <GroupRequestsPage groupId={group.id} groupName={group.name} />
       ) : (
         <RideHistoryPage selectedGroup={effectiveGroupKey} />
       )}
@@ -381,225 +360,76 @@ function DashboardShell({
   );
 }
 
-interface GroupDashboardRouteProps {
-  user: User;
-  onSignOut: () => Promise<void>;
+function GroupSelectionPage(): JSX.Element {
+  const navigate = useNavigate();
+
+  return (
+    <div className="mx-auto max-w-[1200px] px-4 py-8 sm:px-6">
+      <section className="rounded-xl2 border border-line bg-panel/90 p-5 shadow-card">
+        <p className="text-xs uppercase tracking-[0.2em] text-textMuted">Let&apos;s ride</p>
+        <h1 className="mt-2 text-2xl font-extrabold text-textMain">Kies je groep</h1>
+        <p className="mt-1 text-sm text-textMuted">Kies een van de 3 bestaande groepen om het dashboard te openen.</p>
+      </section>
+
+      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+        {START_GROUPS.map((group) => (
+          <button
+            key={group.slug}
+            type="button"
+            onClick={() => navigate(`/group/${group.slug}`)}
+            className="rounded-xl2 border border-line/80 bg-panel/95 p-5 text-left shadow-card transition hover:border-accent/60"
+          >
+            <p className="text-base font-bold text-textMain">{group.label}</p>
+            <p className="mt-2 text-xs font-semibold text-accent">Open dashboard</p>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
-function GroupDashboardRoute({ user, onSignOut }: GroupDashboardRouteProps): JSX.Element {
+function GroupDashboardRoute(): JSX.Element {
   const params = useParams<{ groupSlug: string }>();
   const navigate = useNavigate();
-  const [group, setGroup] = useState<AppGroup | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  const [vitessenOptions, setVitessenOptions] = useState<Array<{ label: string; slug: string }>>([]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const group = useMemo(
+    () => APP_GROUPS.find((candidate) => candidate.slug === params.groupSlug) ?? null,
+    [params.groupSlug],
+  );
 
-    const loadRoute = async (): Promise<void> => {
-      setIsLoading(true);
-      setIsAuthorized(false);
+  const subgroupOptions = useMemo(() => {
+    if (!group?.subgroup) {
+      return [];
+    }
 
-      try {
-        const slug = params.groupSlug;
-        if (!slug) {
-          setIsAuthorized(false);
-          return;
-        }
+    return APP_GROUPS.filter((candidate) => candidate.mainGroup === group.mainGroup && candidate.subgroup).map(
+      (candidate) => ({ label: candidate.subgroup ?? candidate.name, slug: candidate.slug }),
+    );
+  }, [group]);
 
-        const loadedGroup = await fetchGroupBySlug(slug);
-        if (!loadedGroup) {
-          setIsAuthorized(false);
-          return;
-        }
-
-        const membership = await fetchMembershipForGroup(user.id, loadedGroup.id);
-        if (!membership || membership.status !== 'active') {
-          setIsAuthorized(false);
-          return;
-        }
-
-        if (cancelled) {
-          return;
-        }
-
-        setGroup(loadedGroup);
-        setIsAuthorized(true);
-        setIsAdmin(membership.role === 'admin');
-
-        const [allGroups, userMemberships] = await Promise.all([fetchGroups('', 'all'), fetchMembershipsForUser(user.id)]);
-
-        const activeGroupIds = new Set(
-          userMemberships.filter((candidate) => candidate.status === 'active').map((candidate) => candidate.groupId),
-        );
-
-        const options = allGroups
-          .filter((candidate) => candidate.mainGroup === loadedGroup.mainGroup && activeGroupIds.has(candidate.id))
-          .map((candidate) => ({ label: candidate.subgroup ?? candidate.name, slug: candidate.slug }));
-
-        setVitessenOptions(options);
-      } catch {
-        if (!cancelled) {
-          setIsAuthorized(false);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    void loadRoute();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [params.groupSlug, user.id]);
-
-  if (isLoading) {
-    return <p className="p-6 text-sm text-textMuted">Groep laden...</p>;
-  }
-
-  if (!isAuthorized || !group) {
+  if (!group) {
     return <Navigate to="/" replace />;
   }
 
   return (
     <DashboardShell
       group={group}
-      isAdmin={isAdmin}
-      vitessenOptions={vitessenOptions}
-      onVitessenSubgroupChange={(slug) => {
+      subgroupOptions={subgroupOptions}
+      onSubgroupChange={(slug) => {
         navigate(`/group/${slug}`);
       }}
-      onSignOut={onSignOut}
     />
   );
 }
 
-function AppShell({ user, onSignOut }: { user: User; onSignOut: () => Promise<void> }): JSX.Element {
-  const [isMembershipCheckLoading, setIsMembershipCheckLoading] = useState<boolean>(true);
-  const [defaultActiveGroupSlug, setDefaultActiveGroupSlug] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadDefaultGroup = async (): Promise<void> => {
-      setIsMembershipCheckLoading(true);
-
-      try {
-        const [memberships, groups] = await Promise.all([fetchMembershipsForUser(user.id), fetchGroups('', 'all')]);
-        if (cancelled) {
-          return;
-        }
-
-        const activeMembership = memberships.find((membership) => membership.status === 'active');
-        if (!activeMembership) {
-          setDefaultActiveGroupSlug(null);
-          return;
-        }
-
-        const group = groups.find((candidate) => candidate.id === activeMembership.groupId);
-        setDefaultActiveGroupSlug(group?.slug ?? null);
-      } catch {
-        if (!cancelled) {
-          setDefaultActiveGroupSlug(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsMembershipCheckLoading(false);
-        }
-      }
-    };
-
-    void loadDefaultGroup();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user.id]);
-
-  if (isMembershipCheckLoading) {
-    return <p className="p-6 text-sm text-textMuted">Groepen laden...</p>;
-  }
-
+function App(): JSX.Element {
   return (
     <Routes>
-      <Route
-        path="/"
-        element={defaultActiveGroupSlug ? <Navigate to={`/group/${defaultActiveGroupSlug}`} replace /> : <GroupStartPage />}
-      />
-      <Route
-        path="/groups"
-        element={<GroupDirectoryPage userId={user.id} />}
-      />
-      <Route
-        path="/groups/new"
-        element={<GroupCreatePage userId={user.id} />}
-      />
-      <Route path="/group/:groupSlug" element={<GroupDashboardRoute user={user} onSignOut={onSignOut} />} />
+      <Route path="/" element={<GroupSelectionPage />} />
+      <Route path="/group/:groupSlug" element={<GroupDashboardRoute />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
-}
-
-function App(): JSX.Element {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(true);
-
-  useEffect(() => {
-    const supabase = getSupabaseClient();
-
-    const initializeUser = async (nextUser: User | null): Promise<void> => {
-      setUser(nextUser);
-
-      if (!nextUser) {
-        return;
-      }
-
-      try {
-        await ensureProfileForUser(nextUser);
-        await ensureGlobalAdminAccessIfEligible(nextUser);
-      } catch {
-        // Keep app usable even if bootstrap sync fails.
-      }
-    };
-
-    const loadUser = async (): Promise<void> => {
-      const { data } = await supabase.auth.getUser();
-      await initializeUser(data.user ?? null);
-      setIsLoadingAuth(false);
-    };
-
-    void loadUser();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      void initializeUser(session?.user ?? null);
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  const handleSignOut = async (): Promise<void> => {
-    const supabase = getSupabaseClient();
-    await supabase.auth.signOut();
-  };
-
-  if (isLoadingAuth) {
-    return <p className="p-6 text-sm text-textMuted">Sessie laden...</p>;
-  }
-
-  if (!user) {
-    return <AuthPage onAuthenticated={() => undefined} />;
-  }
-
-  return <AppShell user={user} onSignOut={handleSignOut} />;
 }
 
 export default App;
