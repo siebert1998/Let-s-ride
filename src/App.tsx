@@ -469,11 +469,77 @@ function GroupDashboardRoute({ user, onSignOut }: GroupDashboardRouteProps): JSX
 }
 
 function AppShell({ user, onSignOut }: { user: User; onSignOut: () => Promise<void> }): JSX.Element {
+  const [isMembershipCheckLoading, setIsMembershipCheckLoading] = useState<boolean>(true);
+  const [defaultActiveGroupSlug, setDefaultActiveGroupSlug] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDefaultGroup = async (): Promise<void> => {
+      setIsMembershipCheckLoading(true);
+
+      try {
+        const [memberships, groups] = await Promise.all([fetchMembershipsForUser(user.id), fetchGroups('', 'all')]);
+        if (cancelled) {
+          return;
+        }
+
+        const activeMembership = memberships.find((membership) => membership.status === 'active');
+        if (!activeMembership) {
+          setDefaultActiveGroupSlug(null);
+          return;
+        }
+
+        const group = groups.find((candidate) => candidate.id === activeMembership.groupId);
+        setDefaultActiveGroupSlug(group?.slug ?? null);
+      } catch {
+        if (!cancelled) {
+          setDefaultActiveGroupSlug(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsMembershipCheckLoading(false);
+        }
+      }
+    };
+
+    void loadDefaultGroup();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user.id]);
+
+  if (isMembershipCheckLoading) {
+    return <p className="p-6 text-sm text-textMuted">Groepen laden...</p>;
+  }
+
   return (
     <Routes>
-      <Route path="/" element={<GroupStartPage />} />
-      <Route path="/groups" element={<GroupDirectoryPage userId={user.id} />} />
-      <Route path="/groups/new" element={<GroupCreatePage userId={user.id} />} />
+      <Route
+        path="/"
+        element={defaultActiveGroupSlug ? <Navigate to={`/group/${defaultActiveGroupSlug}`} replace /> : <GroupStartPage />}
+      />
+      <Route
+        path="/groups"
+        element={
+          defaultActiveGroupSlug ? (
+            <Navigate to={`/group/${defaultActiveGroupSlug}`} replace />
+          ) : (
+            <GroupDirectoryPage userId={user.id} />
+          )
+        }
+      />
+      <Route
+        path="/groups/new"
+        element={
+          defaultActiveGroupSlug ? (
+            <Navigate to={`/group/${defaultActiveGroupSlug}`} replace />
+          ) : (
+            <GroupCreatePage userId={user.id} />
+          )
+        }
+      />
       <Route path="/group/:groupSlug" element={<GroupDashboardRoute user={user} onSignOut={onSignOut} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
