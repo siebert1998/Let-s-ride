@@ -82,6 +82,32 @@ const mapMembership = (row: MembershipRow): GroupMembership => ({
   status: row.status,
 });
 
+const fetchDisplayNamesByUserIds = async (userIds: string[]): Promise<Map<string, string>> => {
+  const uniqueUserIds = [...new Set(userIds)];
+  const namesByUserId = new Map<string, string>();
+
+  if (uniqueUserIds.length === 0) {
+    return namesByUserId;
+  }
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(PROFILES_TABLE)
+    .select('user_id, display_name')
+    .in('user_id', uniqueUserIds)
+    .returns<Array<{ user_id: string; display_name: string | null }>>();
+
+  if (error) {
+    throw new Error(`Could not load profile display names: ${error.message}`);
+  }
+
+  (data ?? []).forEach((row) => {
+    namesByUserId.set(row.user_id, row.display_name ?? row.user_id);
+  });
+
+  return namesByUserId;
+};
+
 const slugify = (value: string): string =>
   value
     .toLowerCase()
@@ -246,18 +272,20 @@ export const fetchPendingMembershipsForGroup = async (
 
   const { data, error } = await supabase
     .from(MEMBERSHIPS_TABLE)
-    .select('id, group_id, user_id, role, status, profiles(display_name)')
+    .select('id, group_id, user_id, role, status')
     .eq('group_id', groupId)
     .eq('status', 'pending')
-    .returns<Array<MembershipRow & { profiles: { display_name: string | null } | null }>>();
+    .returns<MembershipRow[]>();
 
   if (error) {
     throw new Error(`Could not load pending memberships: ${error.message}`);
   }
 
+  const namesByUserId = await fetchDisplayNamesByUserIds((data ?? []).map((row) => row.user_id));
+
   return (data ?? []).map((row) => ({
     ...mapMembership(row),
-    displayName: row.profiles?.display_name ?? row.user_id,
+    displayName: namesByUserId.get(row.user_id) ?? row.user_id,
   }));
 };
 
@@ -279,19 +307,21 @@ export const fetchMembersForGroup = async (groupId: string): Promise<GroupMember
 
   const { data, error } = await supabase
     .from(MEMBERSHIPS_TABLE)
-    .select('id, group_id, user_id, role, status, profiles(display_name)')
+    .select('id, group_id, user_id, role, status')
     .eq('group_id', groupId)
     .order('created_at', { ascending: true })
-    .returns<Array<MembershipRow & { profiles: { display_name: string | null } | null }>>();
+    .returns<MembershipRow[]>();
 
   if (error) {
     throw new Error(`Could not load members: ${error.message}`);
   }
 
+  const namesByUserId = await fetchDisplayNamesByUserIds((data ?? []).map((row) => row.user_id));
+
   return (data ?? []).map((row) => ({
     membershipId: row.id,
     userId: row.user_id,
-    displayName: row.profiles?.display_name ?? row.user_id,
+    displayName: namesByUserId.get(row.user_id) ?? row.user_id,
     role: row.role,
     status: row.status,
   }));
