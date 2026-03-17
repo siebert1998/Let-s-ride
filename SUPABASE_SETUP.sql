@@ -134,6 +134,22 @@ alter table public.profiles enable row level security;
 alter table public.groups enable row level security;
 alter table public.group_memberships enable row level security;
 
+create or replace function public.is_group_admin(target_group_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.group_memberships gm
+    where gm.group_id = target_group_id
+      and gm.user_id = auth.uid()
+      and gm.role = 'admin'
+      and gm.status = 'active'
+  );
+$$;
+
 drop policy if exists "Users can view own profile" on public.profiles;
 drop policy if exists "Users can upsert own profile" on public.profiles;
 create policy "Users can view own profile"
@@ -164,14 +180,7 @@ create policy "Users can read own memberships or admin view"
   to authenticated
   using (
     user_id = auth.uid()
-    or exists (
-      select 1
-      from public.group_memberships gm
-      where gm.group_id = group_memberships.group_id
-        and gm.user_id = auth.uid()
-        and gm.role = 'admin'
-        and gm.status = 'active'
-    )
+    or public.is_group_admin(group_memberships.group_id)
   );
 
 create policy "Users can create own membership"
@@ -186,23 +195,9 @@ create policy "Users/admin can update memberships"
   to authenticated
   using (
     user_id = auth.uid()
-    or exists (
-      select 1
-      from public.group_memberships gm
-      where gm.group_id = group_memberships.group_id
-        and gm.user_id = auth.uid()
-        and gm.role = 'admin'
-        and gm.status = 'active'
-    )
+    or public.is_group_admin(group_memberships.group_id)
   )
   with check (
     user_id = auth.uid()
-    or exists (
-      select 1
-      from public.group_memberships gm
-      where gm.group_id = group_memberships.group_id
-        and gm.user_id = auth.uid()
-        and gm.role = 'admin'
-        and gm.status = 'active'
-    )
+    or public.is_group_admin(group_memberships.group_id)
   );
