@@ -165,11 +165,18 @@ create policy "Users can upsert own profile"
   with check (user_id = auth.uid());
 
 drop policy if exists "Authenticated users can read groups" on public.groups;
+drop policy if exists "Authenticated users can create groups" on public.groups;
 create policy "Authenticated users can read groups"
   on public.groups
   for select
   to authenticated
   using (true);
+
+create policy "Authenticated users can create groups"
+  on public.groups
+  for insert
+  to authenticated
+  with check (true);
 
 drop policy if exists "Users can read own memberships or admin view" on public.group_memberships;
 drop policy if exists "Users can create own membership" on public.group_memberships;

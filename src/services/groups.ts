@@ -23,6 +23,13 @@ export interface GroupMembership {
   status: MembershipStatus;
 }
 
+export interface CreateGroupInput {
+  name: string;
+  mainGroup: string;
+  subgroup?: string;
+  visibilityType: GroupVisibility;
+}
+
 interface GroupRow {
   id: string;
   slug: string;
@@ -63,6 +70,13 @@ const mapMembership = (row: MembershipRow): GroupMembership => ({
   role: row.role,
   status: row.status,
 });
+
+const slugify = (value: string): string =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
 
 export const ensureProfileForUser = async (user: User): Promise<void> => {
   const supabase = getSupabaseClient();
@@ -247,4 +261,50 @@ export const setMembershipStatus = async (membershipId: string, status: Membersh
   if (error) {
     throw new Error(`Could not update membership status: ${error.message}`);
   }
+};
+
+export const createGroupAndJoinAsAdmin = async (userId: string, input: CreateGroupInput): Promise<AppGroup> => {
+  const supabase = getSupabaseClient();
+  const baseName = input.name.trim();
+
+  if (!baseName) {
+    throw new Error('Groepsnaam is verplicht.');
+  }
+
+  const cleanSubgroup = input.subgroup?.trim() || null;
+  const suffix = Date.now().toString(36);
+  const rawSlug = cleanSubgroup ? `${baseName}-${cleanSubgroup}` : baseName;
+  const slug = `${slugify(rawSlug)}-${suffix}`;
+  const effectiveGroupKey = cleanSubgroup ? `${input.mainGroup}-${cleanSubgroup}` : input.mainGroup;
+
+  const { data: createdGroup, error: createGroupError } = await supabase
+    .from(GROUPS_TABLE)
+    .insert({
+      slug,
+      name: baseName,
+      main_group: input.mainGroup,
+      subgroup: cleanSubgroup,
+      visibility_type: input.visibilityType,
+      effective_group_key: `${effectiveGroupKey}-${suffix}`,
+    })
+    .select('id, slug, name, main_group, subgroup, visibility_type, effective_group_key')
+    .single<GroupRow>();
+
+  if (createGroupError || !createdGroup) {
+    throw new Error(`Could not create group: ${createGroupError?.message ?? 'Unknown error'}`);
+  }
+
+  const { error: membershipError } = await supabase.from(MEMBERSHIPS_TABLE).insert({
+    user_id: userId,
+    group_id: createdGroup.id,
+    role: 'admin',
+    status: 'active',
+    updated_at: new Date().toISOString(),
+  });
+
+  if (membershipError) {
+    throw new Error(`Could not assign admin membership: ${membershipError.message}`);
+  }
+
+  return mapGroup(createdGroup);
 };

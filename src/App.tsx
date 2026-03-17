@@ -2,8 +2,10 @@ import { User } from '@supabase/supabase-js';
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { AuthPage } from './components/AuthPage';
+import { GroupCreatePage } from './components/GroupCreatePage';
 import { GroupDirectoryPage } from './components/GroupDirectoryPage';
 import { GroupRequestsPage } from './components/GroupRequestsPage';
+import { GroupStartPage } from './components/GroupStartPage';
 import { PlannerPage } from './components/PlannerPage';
 import { RideHistoryPage } from './components/RideHistoryPage';
 import { RouteCard } from './components/RouteCard';
@@ -436,7 +438,9 @@ function GroupDashboardRoute({ user, onSignOut }: GroupDashboardRouteProps): JSX
 function AppShell({ user, onSignOut }: { user: User; onSignOut: () => Promise<void> }): JSX.Element {
   return (
     <Routes>
-      <Route path="/" element={<GroupDirectoryPage userId={user.id} />} />
+      <Route path="/" element={<GroupStartPage />} />
+      <Route path="/groups" element={<GroupDirectoryPage userId={user.id} />} />
+      <Route path="/groups/new" element={<GroupCreatePage userId={user.id} />} />
       <Route path="/group/:groupSlug" element={<GroupDashboardRoute user={user} onSignOut={onSignOut} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
