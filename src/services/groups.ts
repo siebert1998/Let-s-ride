@@ -13,6 +13,7 @@ export interface AppGroup {
   subgroup: string | null;
   visibilityType: GroupVisibility;
   effectiveGroupKey: string;
+  adminRequiredForRideChanges: boolean;
 }
 
 export interface GroupMembership {
@@ -38,12 +39,21 @@ interface GroupRow {
   subgroup: string | null;
   visibility_type: GroupVisibility;
   effective_group_key: string;
+  admin_required_for_ride_changes: boolean;
 }
 
 interface MembershipRow {
   id: string;
   group_id: string;
   user_id: string;
+  role: MembershipRole;
+  status: MembershipStatus;
+}
+
+export interface GroupMemberView {
+  membershipId: string;
+  userId: string;
+  displayName: string;
   role: MembershipRole;
   status: MembershipStatus;
 }
@@ -61,6 +71,7 @@ const mapGroup = (row: GroupRow): AppGroup => ({
   subgroup: row.subgroup,
   visibilityType: row.visibility_type,
   effectiveGroupKey: row.effective_group_key,
+  adminRequiredForRideChanges: row.admin_required_for_ride_changes,
 });
 
 const mapMembership = (row: MembershipRow): GroupMembership => ({
@@ -136,7 +147,7 @@ export const fetchGroups = async (searchTerm: string, visibilityFilter: 'all' | 
 
   let query = supabase
     .from(GROUPS_TABLE)
-    .select('id, slug, name, main_group, subgroup, visibility_type, effective_group_key')
+    .select('id, slug, name, main_group, subgroup, visibility_type, effective_group_key, admin_required_for_ride_changes')
     .order('name', { ascending: true });
 
   if (visibilityFilter !== 'all') {
@@ -162,7 +173,7 @@ export const fetchGroupBySlug = async (slug: string): Promise<AppGroup | null> =
 
   const { data, error } = await supabase
     .from(GROUPS_TABLE)
-    .select('id, slug, name, main_group, subgroup, visibility_type, effective_group_key')
+    .select('id, slug, name, main_group, subgroup, visibility_type, effective_group_key, admin_required_for_ride_changes')
     .eq('slug', slug)
     .maybeSingle<GroupRow>();
 
@@ -263,6 +274,60 @@ export const setMembershipStatus = async (membershipId: string, status: Membersh
   }
 };
 
+export const fetchMembersForGroup = async (groupId: string): Promise<GroupMemberView[]> => {
+  const supabase = getSupabaseClient();
+
+  const { data, error } = await supabase
+    .from(MEMBERSHIPS_TABLE)
+    .select('id, group_id, user_id, role, status, profiles(display_name)')
+    .eq('group_id', groupId)
+    .order('created_at', { ascending: true })
+    .returns<Array<MembershipRow & { profiles: { display_name: string | null } | null }>>();
+
+  if (error) {
+    throw new Error(`Could not load members: ${error.message}`);
+  }
+
+  return (data ?? []).map((row) => ({
+    membershipId: row.id,
+    userId: row.user_id,
+    displayName: row.profiles?.display_name ?? row.user_id,
+    role: row.role,
+    status: row.status,
+  }));
+};
+
+export const updateMembershipRole = async (membershipId: string, role: MembershipRole): Promise<void> => {
+  const supabase = getSupabaseClient();
+
+  const { error } = await supabase
+    .from(MEMBERSHIPS_TABLE)
+    .update({ role, updated_at: new Date().toISOString() })
+    .eq('id', membershipId);
+
+  if (error) {
+    throw new Error(`Could not update membership role: ${error.message}`);
+  }
+};
+
+export const updateGroupRidePermissionMode = async (
+  groupId: string,
+  adminRequiredForRideChanges: boolean,
+): Promise<void> => {
+  const supabase = getSupabaseClient();
+
+  const { error } = await supabase
+    .from(GROUPS_TABLE)
+    .update({
+      admin_required_for_ride_changes: adminRequiredForRideChanges,
+    })
+    .eq('id', groupId);
+
+  if (error) {
+    throw new Error(`Could not update group ride permissions: ${error.message}`);
+  }
+};
+
 export const createGroupAndJoinAsAdmin = async (userId: string, input: CreateGroupInput): Promise<AppGroup> => {
   const supabase = getSupabaseClient();
   const baseName = input.name.trim();
@@ -286,8 +351,11 @@ export const createGroupAndJoinAsAdmin = async (userId: string, input: CreateGro
       subgroup: cleanSubgroup,
       visibility_type: input.visibilityType,
       effective_group_key: `${effectiveGroupKey}-${suffix}`,
+      admin_required_for_ride_changes: true,
     })
-    .select('id, slug, name, main_group, subgroup, visibility_type, effective_group_key')
+    .select(
+      'id, slug, name, main_group, subgroup, visibility_type, effective_group_key, admin_required_for_ride_changes',
+    )
     .single<GroupRow>();
 
   if (createGroupError || !createdGroup) {

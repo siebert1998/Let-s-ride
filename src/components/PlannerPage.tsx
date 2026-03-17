@@ -14,6 +14,7 @@ import { UploadDropzone } from './UploadDropzone';
 interface PlannerPageProps {
   effectiveGroupKey: string;
   onRouteSaved: (dateKey: string) => void;
+  canEditRoutes: boolean;
 }
 
 interface SourceFileState {
@@ -98,7 +99,7 @@ const toPlannerDraft = (groupKey: string, route: SyncedRoute): PlannerDraft => {
   };
 };
 
-export function PlannerPage({ effectiveGroupKey, onRouteSaved }: PlannerPageProps): JSX.Element {
+export function PlannerPage({ effectiveGroupKey, onRouteSaved, canEditRoutes }: PlannerPageProps): JSX.Element {
   const [drafts, setDrafts] = useState<PlannerDraft[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [pageError, setPageError] = useState<string>('');
@@ -153,6 +154,11 @@ export function PlannerPage({ effectiveGroupKey, onRouteSaved }: PlannerPageProp
     const draft = drafts.find((candidate) => candidate.id === id);
 
     if (!draft) {
+      return;
+    }
+
+    if (!canEditRoutes) {
+      updateDraft(id, (current) => ({ ...current, error: 'Alleen admins mogen ritten beheren in deze groep.' }));
       return;
     }
 
@@ -226,6 +232,11 @@ export function PlannerPage({ effectiveGroupKey, onRouteSaved }: PlannerPageProp
         <p className="mt-1 text-sm text-textMuted">
           Upload ritten zonder datum en pin ze later vast op een specifieke dag in je dashboard.
         </p>
+        {!canEditRoutes ? (
+          <p className="mt-2 text-xs font-semibold text-textMuted">
+            Alleen admins mogen ritten toevoegen of wijzigen in deze groep.
+          </p>
+        ) : null}
       </div>
 
       {pageError ? <p className="text-sm font-semibold text-red-400">{pageError}</p> : null}
@@ -244,6 +255,7 @@ export function PlannerPage({ effectiveGroupKey, onRouteSaved }: PlannerPageProp
             </div>
 
             <UploadDropzone
+              disabled={!canEditRoutes}
               onFileSelected={async (file) => {
                 updateDraft(draft.id, (current) => ({ ...current, error: '', isSaved: false }));
 
@@ -288,6 +300,7 @@ export function PlannerPage({ effectiveGroupKey, onRouteSaved }: PlannerPageProp
               Opmerkingen
               <textarea
                 value={draft.notes}
+                disabled={!canEditRoutes}
                 onChange={(event) =>
                   updateDraft(draft.id, (current) => ({
                     ...current,
@@ -306,6 +319,7 @@ export function PlannerPage({ effectiveGroupKey, onRouteSaved }: PlannerPageProp
               <input
                 type="date"
                 value={draft.pinDate}
+                disabled={!canEditRoutes}
                 onChange={(event) =>
                   updateDraft(draft.id, (current) => ({
                     ...current,
@@ -324,7 +338,7 @@ export function PlannerPage({ effectiveGroupKey, onRouteSaved }: PlannerPageProp
               <button
                 type="button"
                 onClick={() => void saveDraft(draft.id, false)}
-                disabled={draft.isSaving}
+                disabled={!canEditRoutes || draft.isSaving}
                 className="flex-1 rounded-lg bg-accent px-4 py-2 text-sm font-bold text-black transition hover:bg-accentStrong disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {draft.isSaving ? 'Opslaan...' : 'Opslaan'}
@@ -346,7 +360,7 @@ export function PlannerPage({ effectiveGroupKey, onRouteSaved }: PlannerPageProp
         <button
           type="button"
           onClick={() => setDrafts((current) => [...current, createDraft(effectiveGroupKey)])}
-          disabled={!canAddMore}
+          disabled={!canEditRoutes || !canAddMore}
           className="grid min-h-[420px] place-items-center rounded-xl2 border border-dashed border-line bg-panel/60 p-4 text-textMuted transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
         >
           <div className="text-center">

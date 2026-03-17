@@ -9,6 +9,7 @@ interface RouteCardProps {
   title: string;
   storageId: string;
   initialNotes?: string;
+  canEditRoutes?: boolean;
 }
 
 interface SourceFileState {
@@ -41,7 +42,7 @@ const toErrorMessage = (error: unknown): string => {
   return 'Could not sync this route.';
 };
 
-export function RouteCard({ title, storageId, initialNotes = '' }: RouteCardProps): JSX.Element {
+export function RouteCard({ title, storageId, initialNotes = '', canEditRoutes = true }: RouteCardProps): JSX.Element {
   const [routeData, setRouteData] = useState<ParsedRoute | null>(null);
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -154,6 +155,10 @@ export function RouteCard({ title, storageId, initialNotes = '' }: RouteCardProp
   );
 
   const handleFileSelected = async (file: File): Promise<void> => {
+    if (!canEditRoutes) {
+      return;
+    }
+
     setError('');
     setIsLoading(true);
 
@@ -179,6 +184,10 @@ export function RouteCard({ title, storageId, initialNotes = '' }: RouteCardProp
   };
 
   const handleDeleteGpx = async (): Promise<void> => {
+    if (!canEditRoutes) {
+      return;
+    }
+
     setRouteData(null);
     setSourceFile(null);
     await persistRoute({ sourceFile: null, routeData: null });
@@ -196,7 +205,7 @@ export function RouteCard({ title, storageId, initialNotes = '' }: RouteCardProp
               {statusLabel}
             </span>
           ) : null}
-          {sourceFile ? (
+          {sourceFile && canEditRoutes ? (
             <button
               type="button"
               onClick={() => void handleDeleteGpx()}
@@ -211,7 +220,7 @@ export function RouteCard({ title, storageId, initialNotes = '' }: RouteCardProp
         </div>
       </div>
 
-      <UploadDropzone onFileSelected={handleFileSelected} disabled={isLoading || isSaving} />
+      <UploadDropzone onFileSelected={handleFileSelected} disabled={!canEditRoutes || isLoading || isSaving} />
 
       <div className="mt-3 grid grid-cols-2 gap-3">
         <Metric label="Distance" value={routeData ? formatDistance(routeData.distanceKm) : '--'} />
@@ -229,6 +238,9 @@ export function RouteCard({ title, storageId, initialNotes = '' }: RouteCardProp
       </div>
 
       {error ? <p className="mt-2 text-xs font-semibold text-red-400">{error}</p> : null}
+      {!canEditRoutes ? (
+        <p className="mt-2 text-xs font-semibold text-textMuted">Alleen admins mogen ritten aanpassen in deze groep.</p>
+      ) : null}
 
       <label className="mt-3 flex flex-1 flex-col gap-2 text-sm font-semibold text-textMain">
         Notes
@@ -236,10 +248,11 @@ export function RouteCard({ title, storageId, initialNotes = '' }: RouteCardProp
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
           onBlur={() => {
-            if (isBootstrapped) {
+            if (isBootstrapped && canEditRoutes) {
               void persistRoute();
             }
           }}
+          disabled={!canEditRoutes}
           placeholder="Startpunt, tijdstip, pace,..."
           className="min-h-[82px] flex-1 resize-none rounded-lg border border-line bg-panelSoft px-3 py-2 text-sm text-textMain outline-none ring-0 transition placeholder:text-textMuted focus:border-accent"
         />

@@ -95,9 +95,13 @@ create table if not exists public.groups (
   main_group text not null,
   subgroup text,
   visibility_type text not null check (visibility_type in ('open', 'closed')),
+  admin_required_for_ride_changes boolean not null default true,
   effective_group_key text unique not null,
   created_at timestamptz not null default timezone('utc', now())
 );
+
+alter table public.groups
+  add column if not exists admin_required_for_ride_changes boolean not null default true;
 
 create table if not exists public.group_memberships (
   id uuid primary key default gen_random_uuid(),
@@ -128,6 +132,7 @@ on conflict (slug) do update set
   main_group = excluded.main_group,
   subgroup = excluded.subgroup,
   visibility_type = excluded.visibility_type,
+  admin_required_for_ride_changes = excluded.admin_required_for_ride_changes,
   effective_group_key = excluded.effective_group_key;
 
 alter table public.profiles enable row level security;
@@ -166,6 +171,7 @@ create policy "Users can upsert own profile"
 
 drop policy if exists "Authenticated users can read groups" on public.groups;
 drop policy if exists "Authenticated users can create groups" on public.groups;
+drop policy if exists "Group admins can update groups" on public.groups;
 create policy "Authenticated users can read groups"
   on public.groups
   for select
@@ -178,9 +184,17 @@ create policy "Authenticated users can create groups"
   to authenticated
   with check (true);
 
+create policy "Group admins can update groups"
+  on public.groups
+  for update
+  to authenticated
+  using (public.is_group_admin(groups.id))
+  with check (public.is_group_admin(groups.id));
+
 drop policy if exists "Users can read own memberships or admin view" on public.group_memberships;
 drop policy if exists "Users can create own membership" on public.group_memberships;
 drop policy if exists "Users/admin can update memberships" on public.group_memberships;
+drop policy if exists "Group admins can update memberships" on public.group_memberships;
 create policy "Users can read own memberships or admin view"
   on public.group_memberships
   for select
@@ -196,15 +210,9 @@ create policy "Users can create own membership"
   to authenticated
   with check (user_id = auth.uid());
 
-create policy "Users/admin can update memberships"
+create policy "Group admins can update memberships"
   on public.group_memberships
   for update
   to authenticated
-  using (
-    user_id = auth.uid()
-    or public.is_group_admin(group_memberships.group_id)
-  )
-  with check (
-    user_id = auth.uid()
-    or public.is_group_admin(group_memberships.group_id)
-  );
+  using (public.is_group_admin(group_memberships.group_id))
+  with check (public.is_group_admin(group_memberships.group_id));

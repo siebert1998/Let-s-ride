@@ -6,6 +6,7 @@ import { GroupCreatePage } from './components/GroupCreatePage';
 import { GroupDirectoryPage } from './components/GroupDirectoryPage';
 import { GroupRequestsPage } from './components/GroupRequestsPage';
 import { GroupStartPage } from './components/GroupStartPage';
+import { MembersPage } from './components/MembersPage';
 import { PlannerPage } from './components/PlannerPage';
 import { RideHistoryPage } from './components/RideHistoryPage';
 import { RouteCard } from './components/RouteCard';
@@ -28,7 +29,7 @@ interface RouteSlot {
   dayIndex: number;
 }
 
-type Page = 'dashboard' | 'history' | 'planner' | 'requests';
+type Page = 'dashboard' | 'history' | 'planner' | 'requests' | 'members';
 
 const VITESSEN_MAIN_GROUP = 'Vitessen';
 const defaultDayIndexes = [0, 1, 2, 3, 4, 5, 6];
@@ -80,8 +81,16 @@ function DashboardShell({
   const [filledDateKeys, setFilledDateKeys] = useState<string[]>([]);
   const [selectedDayIndexes, setSelectedDayIndexes] = useState<number[]>(defaultDayIndexes);
   const [refreshTick, setRefreshTick] = useState<number>(0);
+  const [adminRequiredForRideChanges, setAdminRequiredForRideChanges] = useState<boolean>(
+    group.adminRequiredForRideChanges,
+  );
 
   const effectiveGroupKey = group.effectiveGroupKey;
+  const canEditRoutes = !adminRequiredForRideChanges || isAdmin;
+
+  useEffect(() => {
+    setAdminRequiredForRideChanges(group.adminRequiredForRideChanges);
+  }, [group.adminRequiredForRideChanges, group.id]);
 
   useEffect(() => {
     const storageKey = `letsride:day-filter:${effectiveGroupKey}`;
@@ -239,6 +248,20 @@ function DashboardShell({
                 <button
                   type="button"
                   onClick={() => {
+                    setActivePage('members');
+                    setIsMenuOpen(false);
+                  }}
+                  className={`mt-1 w-full rounded-lg px-3 py-2 text-left text-sm font-semibold transition ${
+                    activePage === 'members'
+                      ? 'bg-accent text-black'
+                      : 'text-textMain hover:bg-panelSoft hover:text-accent'
+                  }`}
+                >
+                  Leden
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
                     setActivePage('history');
                     setIsMenuOpen(false);
                   }}
@@ -291,6 +314,7 @@ function DashboardShell({
                 title={slot.title}
                 storageId={`group-${effectiveGroupKey}-day-${slot.key}`}
                 initialNotes=""
+                canEditRoutes={canEditRoutes}
               />
             ))}
           </main>
@@ -302,12 +326,21 @@ function DashboardShell({
       ) : activePage === 'planner' ? (
         <PlannerPage
           effectiveGroupKey={effectiveGroupKey}
+          canEditRoutes={canEditRoutes}
           onRouteSaved={(dateKey) => {
             const date = new Date(`${dateKey}T00:00:00`);
             setWeekStartDate(getMondayForWeek(date));
             setRefreshTick((current) => current + 1);
             setActivePage('dashboard');
           }}
+        />
+      ) : activePage === 'members' ? (
+        <MembersPage
+          groupId={group.id}
+          groupName={group.name}
+          canManageMembers={isAdmin}
+          adminRequiredForRideChanges={adminRequiredForRideChanges}
+          onAdminRequiredChanged={setAdminRequiredForRideChanges}
         />
       ) : activePage === 'requests' ? (
         <GroupRequestsPage groupId={group.id} groupName={group.name} />
