@@ -32,7 +32,7 @@ interface PlannerDraft {
   sourceFile: SourceFileState | null;
   notes: string;
   pinDate: string;
-  linkedGroupKey: string;
+  linkedGroupKeys: string[];
   error: string;
   isSaving: boolean;
   hasConflict: boolean;
@@ -56,7 +56,7 @@ const createDraft = (groupKey: string): PlannerDraft => {
     sourceFile: null,
     notes: '',
     pinDate: '',
-    linkedGroupKey: '',
+    linkedGroupKeys: [],
     error: '',
     isSaving: false,
     hasConflict: false,
@@ -97,7 +97,7 @@ const toPlannerDraft = (groupKey: string, route: SyncedRoute): PlannerDraft => {
     sourceFile: route.gpxText && route.fileName ? { name: route.fileName, gpxText: route.gpxText } : null,
     notes: route.notes,
     pinDate: '',
-    linkedGroupKey: route.plannerTargetGroups[0] ?? '',
+    linkedGroupKeys: route.plannerTargetGroups,
     error: '',
     isSaving: false,
     hasConflict: false,
@@ -116,6 +116,7 @@ export function PlannerPage({
   const [drafts, setDrafts] = useState<PlannerDraft[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [pageError, setPageError] = useState<string>('');
+  const [openGroupPickerDraftId, setOpenGroupPickerDraftId] = useState<string | null>(null);
 
   const canAddMore = useMemo(() => drafts.length < 20, [drafts.length]);
   useEffect(() => {
@@ -185,41 +186,50 @@ export function PlannerPage({
 
     try {
       if (draft.pinDate) {
-        const targetGroupKey = draft.linkedGroupKey || plannerPinGroupKey;
-        if (!targetGroupKey) {
+        const targetGroupKeys =
+          draft.linkedGroupKeys.length > 0
+            ? draft.linkedGroupKeys
+            : plannerPinGroupKey
+              ? [plannerPinGroupKey]
+              : [];
+        if (targetGroupKeys.length === 0) {
           updateDraft(id, (current) => ({
             ...current,
             isSaving: false,
             hasConflict: false,
-            error: 'Kies eerst een groep in de dropdown.',
+            error: 'Kies minstens 1 groep in de dropdown.',
           }));
           return;
         }
 
-        const dashboardSlotKey = `group-${targetGroupKey}-day-${draft.pinDate}`;
-
         if (!forceOverwrite) {
-          const existing = await fetchRouteBySlot(dashboardSlotKey);
-          if (existing?.gpxText) {
-            updateDraft(id, (current) => ({
-              ...current,
-              isSaving: false,
-              hasConflict: true,
-              error: 'Op deze datum staat al een rit. Kies overschrijven of annuleer.',
-            }));
-            return;
+          for (const targetGroupKey of targetGroupKeys) {
+            const dashboardSlotKey = `group-${targetGroupKey}-day-${draft.pinDate}`;
+            const existing = await fetchRouteBySlot(dashboardSlotKey);
+            if (existing?.gpxText) {
+              updateDraft(id, (current) => ({
+                ...current,
+                isSaving: false,
+                hasConflict: true,
+                error: 'Op deze datum staat al een rit in minstens 1 geselecteerde groep.',
+              }));
+              return;
+            }
           }
         }
 
-        await upsertRouteForSlot({
-          slotKey: dashboardSlotKey,
-          title: toDashboardTitle(draft.pinDate),
-          notes: draft.notes,
-          fileName: draft.sourceFile.name,
-          gpxText: draft.sourceFile.gpxText,
-          distanceKm: draft.routeData.distanceKm,
-          elevationGainM: draft.routeData.elevationGainM,
-        });
+        for (const targetGroupKey of targetGroupKeys) {
+          const dashboardSlotKey = `group-${targetGroupKey}-day-${draft.pinDate}`;
+          await upsertRouteForSlot({
+            slotKey: dashboardSlotKey,
+            title: toDashboardTitle(draft.pinDate),
+            notes: draft.notes,
+            fileName: draft.sourceFile.name,
+            gpxText: draft.sourceFile.gpxText,
+            distanceKm: draft.routeData.distanceKm,
+            elevationGainM: draft.routeData.elevationGainM,
+          });
+        }
 
         await deleteRouteBySlot(draft.slotKey);
         onRouteSaved(draft.pinDate);
@@ -235,7 +245,7 @@ export function PlannerPage({
         gpxText: draft.sourceFile.gpxText,
         distanceKm: draft.routeData.distanceKm,
         elevationGainM: draft.routeData.elevationGainM,
-        plannerTargetGroups: draft.linkedGroupKey ? [draft.linkedGroupKey] : [],
+        plannerTargetGroups: draft.linkedGroupKeys,
       });
 
       updateDraft(id, (current) => ({
@@ -359,29 +369,49 @@ export function PlannerPage({
             </label>
 
             {plannerTargetOptions.length > 0 ? (
-              <label className="mt-3 block text-sm font-semibold text-textMain">
-                Link aan groep
-                <select
-                  value={draft.linkedGroupKey}
+              <div className="relative mt-3">
+                <button
+                  type="button"
                   disabled={!canEditRoutes}
-                  onChange={(event) =>
-                    updateDraft(draft.id, (current) => ({
-                      ...current,
-                      linkedGroupKey: event.target.value,
-                      hasConflict: false,
-                      isSaved: false,
-                    }))
-                  }
-                  className="mt-2 w-full rounded-lg border border-line bg-panelSoft px-3 py-2 text-sm text-textMain outline-none transition focus:border-accent"
+                  onClick={() => setOpenGroupPickerDraftId((current) => (current === draft.id ? null : draft.id))}
+                  className="flex w-full items-center justify-between rounded-lg border border-line bg-panelSoft px-3 py-2 text-sm font-semibold text-textMain transition hover:border-accent disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <option value="">Kies een groep</option>
-                  {plannerTargetOptions.map((option) => (
-                    <option key={option.groupKey} value={option.groupKey}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <span>Link aan groepen ({draft.linkedGroupKeys.length})</span>
+                  <span>{openGroupPickerDraftId === draft.id ? '▴' : '▾'}</span>
+                </button>
+
+                {openGroupPickerDraftId === draft.id ? (
+                  <div className="absolute left-0 right-0 top-11 z-20 rounded-lg border border-line bg-panel p-2 shadow-card">
+                    <div className="max-h-40 space-y-1 overflow-y-auto">
+                      {plannerTargetOptions.map((option) => (
+                        <label key={option.groupKey} className="flex items-center gap-2 rounded px-1 py-1 text-xs text-textMain">
+                          <input
+                            type="checkbox"
+                            checked={draft.linkedGroupKeys.includes(option.groupKey)}
+                            onChange={() =>
+                              updateDraft(draft.id, (current) => {
+                                const isChecked = current.linkedGroupKeys.includes(option.groupKey);
+                                const nextKeys = isChecked
+                                  ? current.linkedGroupKeys.filter((value) => value !== option.groupKey)
+                                  : [...current.linkedGroupKeys, option.groupKey];
+
+                                return {
+                                  ...current,
+                                  linkedGroupKeys: nextKeys,
+                                  hasConflict: false,
+                                  isSaved: false,
+                                };
+                              })
+                            }
+                            className="h-3.5 w-3.5 accent-accent"
+                          />
+                          {option.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             ) : null}
 
             {draft.error ? <p className="mt-2 text-xs font-semibold text-red-400">{draft.error}</p> : null}

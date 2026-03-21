@@ -695,14 +695,30 @@ function GroupDashboardRoute({ groups }: GroupDashboardRouteProps): JSX.Element 
     return [...groups.map((candidate) => candidate.effectiveGroupKey), 'vitessen-baruma-shared-planner'];
   }, [group, groups]);
 
-  const plannerTargetOptions = useMemo(
-    () =>
-      groups.map((candidate) => ({
-        label: candidate.subgroup ? `${candidate.name} • ${candidate.subgroup}` : candidate.name,
+  const plannerTargetOptions = useMemo(() => {
+    if (!group) {
+      return [];
+    }
+
+    const sameMainGroup = groups.filter((candidate) => candidate.mainGroup === group.mainGroup);
+    const hasSubgroups = sameMainGroup.some((candidate) => Boolean(candidate.subgroup));
+
+    if (!hasSubgroups) {
+      return [
+        {
+          label: group.name,
+          groupKey: group.effectiveGroupKey,
+        },
+      ];
+    }
+
+    return sameMainGroup
+      .filter((candidate) => Boolean(candidate.subgroup))
+      .map((candidate) => ({
+        label: candidate.subgroup ?? candidate.name,
         groupKey: candidate.effectiveGroupKey,
-      })),
-    [groups],
-  );
+      }));
+  }, [group, groups]);
 
   if (!group) {
     return <Navigate to="/" replace />;
