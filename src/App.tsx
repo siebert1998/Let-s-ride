@@ -18,6 +18,7 @@ type AppGroup = SharedGroup;
 type Page = 'dashboard' | 'history' | 'planner';
 
 const defaultDayIndexes = [0, 1, 2, 3, 4, 5, 6];
+const GLOBAL_PLANNER_KEY = 'lets-ride-global-planner';
 
 const DEFAULT_APP_GROUPS: AppGroup[] = [
   {
@@ -119,10 +120,17 @@ interface DashboardShellProps {
   group: AppGroup;
   subgroupOptions: Array<{ label: string; slug: string }>;
   plannerPinGroupKey: string;
+  legacyPlannerGroupKeys: string[];
   onSubgroupChange: (slug: string) => void;
 }
 
-function DashboardShell({ group, subgroupOptions, plannerPinGroupKey, onSubgroupChange }: DashboardShellProps): JSX.Element {
+function DashboardShell({
+  group,
+  subgroupOptions,
+  plannerPinGroupKey,
+  legacyPlannerGroupKeys,
+  onSubgroupChange,
+}: DashboardShellProps): JSX.Element {
   const [weekStartDate, setWeekStartDate] = useState<Date>(getMondayForWeek(new Date()));
   const [activePage, setActivePage] = useState<Page>('dashboard');
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
@@ -131,8 +139,7 @@ function DashboardShell({ group, subgroupOptions, plannerPinGroupKey, onSubgroup
   const [refreshTick, setRefreshTick] = useState<number>(0);
 
   const effectiveGroupKey = group.effectiveGroupKey;
-  const plannerGroupKey =
-    group.mainGroup === 'Vitessen Baruma' ? 'vitessen-baruma-shared-planner' : group.effectiveGroupKey;
+  const plannerGroupKey = GLOBAL_PLANNER_KEY;
 
   useEffect(() => {
     const storageKey = `letsride:day-filter:${effectiveGroupKey}`;
@@ -330,6 +337,7 @@ function DashboardShell({ group, subgroupOptions, plannerPinGroupKey, onSubgroup
         <PlannerPage
           plannerGroupKey={plannerGroupKey}
           plannerPinGroupKey={plannerPinGroupKey}
+          legacyPlannerGroupKeys={legacyPlannerGroupKeys}
           canEditRoutes
           onRouteSaved={(dateKey) => {
             const date = new Date(`${dateKey}T00:00:00`);
@@ -676,6 +684,14 @@ function GroupDashboardRoute({ groups }: GroupDashboardRouteProps): JSX.Element 
     return socialRidesGroup?.effectiveGroupKey ?? group.effectiveGroupKey;
   }, [group, groups]);
 
+  const legacyPlannerGroupKeys = useMemo(() => {
+    if (!group) {
+      return [];
+    }
+
+    return [...groups.map((candidate) => candidate.effectiveGroupKey), 'vitessen-baruma-shared-planner'];
+  }, [group, groups]);
+
   if (!group) {
     return <Navigate to="/" replace />;
   }
@@ -685,6 +701,7 @@ function GroupDashboardRoute({ groups }: GroupDashboardRouteProps): JSX.Element 
       group={group}
       subgroupOptions={subgroupOptions}
       plannerPinGroupKey={plannerPinGroupKey}
+      legacyPlannerGroupKeys={legacyPlannerGroupKeys}
       onSubgroupChange={(slug) => {
         navigate(`/${slug}`);
       }}

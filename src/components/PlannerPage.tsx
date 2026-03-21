@@ -14,6 +14,7 @@ import { UploadDropzone } from './UploadDropzone';
 interface PlannerPageProps {
   plannerGroupKey: string;
   plannerPinGroupKey: string;
+  legacyPlannerGroupKeys?: string[];
   onRouteSaved: (dateKey: string) => void;
   canEditRoutes: boolean;
 }
@@ -103,6 +104,7 @@ const toPlannerDraft = (groupKey: string, route: SyncedRoute): PlannerDraft => {
 export function PlannerPage({
   plannerGroupKey,
   plannerPinGroupKey,
+  legacyPlannerGroupKeys = [],
   onRouteSaved,
   canEditRoutes,
 }: PlannerPageProps): JSX.Element {
@@ -119,7 +121,9 @@ export function PlannerPage({
       setPageError('');
 
       try {
-        const plannerRoutes = await fetchPlannerDraftsByGroup(plannerGroupKey);
+        const keysToLoad = [...new Set([plannerGroupKey, ...legacyPlannerGroupKeys])];
+        const plannerRouteChunks = await Promise.all(keysToLoad.map((key) => fetchPlannerDraftsByGroup(key)));
+        const plannerRoutes = plannerRouteChunks.flat().sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
 
         if (cancelled) {
           return;
@@ -149,7 +153,7 @@ export function PlannerPage({
     return () => {
       cancelled = true;
     };
-  }, [plannerGroupKey]);
+  }, [legacyPlannerGroupKeys, plannerGroupKey]);
 
   const updateDraft = (id: string, updater: (draft: PlannerDraft) => PlannerDraft): void => {
     setDrafts((currentDrafts) => currentDrafts.map((draft) => (draft.id === id ? updater(draft) : draft)));
