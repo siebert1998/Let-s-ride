@@ -120,6 +120,7 @@ interface DashboardShellProps {
   group: AppGroup;
   subgroupOptions: Array<{ label: string; slug: string }>;
   plannerPinGroupKey: string;
+  plannerTargetOptions: Array<{ label: string; groupKey: string }>;
   legacyPlannerGroupKeys: string[];
   onSubgroupChange: (slug: string) => void;
 }
@@ -128,6 +129,7 @@ function DashboardShell({
   group,
   subgroupOptions,
   plannerPinGroupKey,
+  plannerTargetOptions,
   legacyPlannerGroupKeys,
   onSubgroupChange,
 }: DashboardShellProps): JSX.Element {
@@ -337,6 +339,7 @@ function DashboardShell({
         <PlannerPage
           plannerGroupKey={plannerGroupKey}
           plannerPinGroupKey={plannerPinGroupKey}
+          plannerTargetOptions={plannerTargetOptions}
           legacyPlannerGroupKeys={legacyPlannerGroupKeys}
           canEditRoutes
           onRouteSaved={(dateKey) => {
@@ -692,6 +695,15 @@ function GroupDashboardRoute({ groups }: GroupDashboardRouteProps): JSX.Element 
     return [...groups.map((candidate) => candidate.effectiveGroupKey), 'vitessen-baruma-shared-planner'];
   }, [group, groups]);
 
+  const plannerTargetOptions = useMemo(
+    () =>
+      groups.map((candidate) => ({
+        label: candidate.subgroup ? `${candidate.name} • ${candidate.subgroup}` : candidate.name,
+        groupKey: candidate.effectiveGroupKey,
+      })),
+    [groups],
+  );
+
   if (!group) {
     return <Navigate to="/" replace />;
   }
@@ -701,6 +713,7 @@ function GroupDashboardRoute({ groups }: GroupDashboardRouteProps): JSX.Element 
       group={group}
       subgroupOptions={subgroupOptions}
       plannerPinGroupKey={plannerPinGroupKey}
+      plannerTargetOptions={plannerTargetOptions}
       legacyPlannerGroupKeys={legacyPlannerGroupKeys}
       onSubgroupChange={(slug) => {
         navigate(`/${slug}`);

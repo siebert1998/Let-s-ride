@@ -14,6 +14,7 @@ import { UploadDropzone } from './UploadDropzone';
 interface PlannerPageProps {
   plannerGroupKey: string;
   plannerPinGroupKey: string;
+  plannerTargetOptions: Array<{ label: string; groupKey: string }>;
   legacyPlannerGroupKeys?: string[];
   onRouteSaved: (dateKey: string) => void;
   canEditRoutes: boolean;
@@ -31,6 +32,7 @@ interface PlannerDraft {
   sourceFile: SourceFileState | null;
   notes: string;
   pinDate: string;
+  linkedGroupKey: string;
   error: string;
   isSaving: boolean;
   hasConflict: boolean;
@@ -54,6 +56,7 @@ const createDraft = (groupKey: string): PlannerDraft => {
     sourceFile: null,
     notes: '',
     pinDate: '',
+    linkedGroupKey: '',
     error: '',
     isSaving: false,
     hasConflict: false,
@@ -94,6 +97,7 @@ const toPlannerDraft = (groupKey: string, route: SyncedRoute): PlannerDraft => {
     sourceFile: route.gpxText && route.fileName ? { name: route.fileName, gpxText: route.gpxText } : null,
     notes: route.notes,
     pinDate: '',
+    linkedGroupKey: route.plannerTargetGroups[0] ?? '',
     error: '',
     isSaving: false,
     hasConflict: false,
@@ -104,6 +108,7 @@ const toPlannerDraft = (groupKey: string, route: SyncedRoute): PlannerDraft => {
 export function PlannerPage({
   plannerGroupKey,
   plannerPinGroupKey,
+  plannerTargetOptions,
   legacyPlannerGroupKeys = [],
   onRouteSaved,
   canEditRoutes,
@@ -180,7 +185,18 @@ export function PlannerPage({
 
     try {
       if (draft.pinDate) {
-        const dashboardSlotKey = `group-${plannerPinGroupKey}-day-${draft.pinDate}`;
+        const targetGroupKey = draft.linkedGroupKey || plannerPinGroupKey;
+        if (!targetGroupKey) {
+          updateDraft(id, (current) => ({
+            ...current,
+            isSaving: false,
+            hasConflict: false,
+            error: 'Kies eerst een groep in de dropdown.',
+          }));
+          return;
+        }
+
+        const dashboardSlotKey = `group-${targetGroupKey}-day-${draft.pinDate}`;
 
         if (!forceOverwrite) {
           const existing = await fetchRouteBySlot(dashboardSlotKey);
@@ -219,6 +235,7 @@ export function PlannerPage({
         gpxText: draft.sourceFile.gpxText,
         distanceKm: draft.routeData.distanceKm,
         elevationGainM: draft.routeData.elevationGainM,
+        plannerTargetGroups: draft.linkedGroupKey ? [draft.linkedGroupKey] : [],
       });
 
       updateDraft(id, (current) => ({
@@ -340,6 +357,32 @@ export function PlannerPage({
                 className="mt-2 w-full rounded-lg border border-line bg-panelSoft px-3 py-2 text-sm text-textMain outline-none transition focus:border-accent"
               />
             </label>
+
+            {plannerTargetOptions.length > 0 ? (
+              <label className="mt-3 block text-sm font-semibold text-textMain">
+                Link aan groep
+                <select
+                  value={draft.linkedGroupKey}
+                  disabled={!canEditRoutes}
+                  onChange={(event) =>
+                    updateDraft(draft.id, (current) => ({
+                      ...current,
+                      linkedGroupKey: event.target.value,
+                      hasConflict: false,
+                      isSaved: false,
+                    }))
+                  }
+                  className="mt-2 w-full rounded-lg border border-line bg-panelSoft px-3 py-2 text-sm text-textMain outline-none transition focus:border-accent"
+                >
+                  <option value="">Kies een groep</option>
+                  {plannerTargetOptions.map((option) => (
+                    <option key={option.groupKey} value={option.groupKey}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
 
             {draft.error ? <p className="mt-2 text-xs font-semibold text-red-400">{draft.error}</p> : null}
 
