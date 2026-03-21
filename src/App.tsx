@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-do
 import { PlannerPage } from './components/PlannerPage';
 import { RideHistoryPage } from './components/RideHistoryPage';
 import { RouteCard } from './components/RouteCard';
+import { fetchSharedGroups, upsertSharedGroups, type SharedGroup } from './services/groupsShared';
 import { TopControls } from './components/TopControls';
 import { fetchCompletedRideDateKeysByGroup } from './services/routes';
 
@@ -12,20 +13,10 @@ interface RouteSlot {
   dayIndex: number;
 }
 
-interface AppGroup {
-  id: string;
-  slug: string;
-  name: string;
-  mainGroup: string;
-  subgroup: string | null;
-  visibilityType: 'open' | 'closed';
-  effectiveGroupKey: string;
-  adminRequiredForRideChanges: boolean;
-}
+type AppGroup = SharedGroup;
 
 type Page = 'dashboard' | 'history' | 'planner';
 
-const GROUPS_STORAGE_KEY = 'letsride:app-groups:v1';
 const defaultDayIndexes = [0, 1, 2, 3, 4, 5, 6];
 
 const DEFAULT_APP_GROUPS: AppGroup[] = [
@@ -123,49 +114,6 @@ const slugify = (value: string): string =>
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
-
-const isValidGroup = (value: unknown): value is AppGroup => {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const candidate = value as Partial<AppGroup>;
-
-  return (
-    typeof candidate.id === 'string' &&
-    typeof candidate.slug === 'string' &&
-    typeof candidate.name === 'string' &&
-    typeof candidate.mainGroup === 'string' &&
-    (typeof candidate.subgroup === 'string' || candidate.subgroup === null) &&
-    (candidate.visibilityType === 'open' || candidate.visibilityType === 'closed') &&
-    typeof candidate.effectiveGroupKey === 'string' &&
-    typeof candidate.adminRequiredForRideChanges === 'boolean'
-  );
-};
-
-const loadStoredGroups = (): AppGroup[] => {
-  const raw = localStorage.getItem(GROUPS_STORAGE_KEY);
-
-  if (!raw) {
-    return DEFAULT_APP_GROUPS;
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) {
-      return DEFAULT_APP_GROUPS;
-    }
-
-    const groups = parsed.filter(isValidGroup);
-    if (groups.length === 0) {
-      return DEFAULT_APP_GROUPS;
-    }
-
-    return groups;
-  } catch {
-    return DEFAULT_APP_GROUPS;
-  }
-};
 
 interface DashboardShellProps {
   group: AppGroup;
@@ -464,26 +412,32 @@ function GroupSelectionPage({ groups }: GroupSelectionPageProps): JSX.Element {
 interface GroupAdminPageProps {
   groups: AppGroup[];
   onCreateGroupSet: (groupName: string, subgroups: string[]) => void;
+  onAddSubgroupToGroup: (mainGroup: string, subgroupName: string) => boolean;
+  onRenameGroup: (mainGroup: string, newName: string) => boolean;
 }
 
-function GroupAdminPage({ groups, onCreateGroupSet }: GroupAdminPageProps): JSX.Element {
+function GroupAdminPage({ groups, onCreateGroupSet, onAddSubgroupToGroup, onRenameGroup }: GroupAdminPageProps): JSX.Element {
   const [groupName, setGroupName] = useState<string>('');
   const [subgroups, setSubgroups] = useState<string[]>([]);
+  const [renameDrafts, setRenameDrafts] = useState<Record<string, string>>({});
+  const [newSubgroupDrafts, setNewSubgroupDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
 
   const groupedOverview = useMemo(() => {
-    const grouped = new Map<string, string[]>();
+    const grouped = new Map<string, { name: string; subgroups: string[] }>();
 
     groups.forEach((group) => {
-      const current = grouped.get(group.name) ?? [];
+      const current = grouped.get(group.mainGroup) ?? { name: group.name, subgroups: [] };
       if (group.subgroup) {
-        current.push(group.subgroup);
+        current.subgroups.push(group.subgroup);
       }
-      grouped.set(group.name, current);
+      grouped.set(group.mainGroup, current);
     });
 
-    return Array.from(grouped.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    return Array.from(grouped.entries())
+      .map(([mainGroup, values]) => ({ mainGroup, name: values.name, subgroups: values.subgroups }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [groups]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
@@ -591,12 +545,79 @@ function GroupAdminPage({ groups, onCreateGroupSet }: GroupAdminPageProps): JSX.
       <section className="mt-4 rounded-xl2 border border-line/80 bg-panel/95 p-5 shadow-card">
         <h2 className="text-sm font-bold uppercase tracking-wide text-textMuted">Bestaande groepen</h2>
         <div className="mt-2 space-y-2">
-          {groupedOverview.map(([name, subgroupList]) => (
-            <div key={name} className="rounded-lg border border-line bg-panelSoft px-3 py-2">
-              <p className="text-sm font-semibold text-textMain">{name}</p>
+          {groupedOverview.map((groupInfo) => (
+            <div key={groupInfo.mainGroup} className="rounded-lg border border-line bg-panelSoft px-3 py-3">
+              <p className="text-sm font-semibold text-textMain">{groupInfo.name}</p>
               <p className="text-xs text-textMuted">
-                {subgroupList.length > 0 ? `Subgroepen: ${subgroupList.join(', ')}` : 'Geen subgroepen'}
+                {groupInfo.subgroups.length > 0 ? `Subgroepen: ${groupInfo.subgroups.join(', ')}` : 'Geen subgroepen'}
               </p>
+
+              <div className="mt-3 grid grid-cols-1 gap-2 lg:grid-cols-[1fr_auto]">
+                <input
+                  value={renameDrafts[groupInfo.mainGroup] ?? groupInfo.name}
+                  onChange={(event) =>
+                    setRenameDrafts((current) => ({ ...current, [groupInfo.mainGroup]: event.target.value }))
+                  }
+                  className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-textMain outline-none transition focus:border-accent"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextName = (renameDrafts[groupInfo.mainGroup] ?? groupInfo.name).trim();
+                    if (!nextName) {
+                      setError('Nieuwe naam mag niet leeg zijn.');
+                      return;
+                    }
+
+                    const renamed = onRenameGroup(groupInfo.mainGroup, nextName);
+                    if (!renamed) {
+                      setError('Naam kon niet aangepast worden.');
+                      return;
+                    }
+
+                    setError('');
+                    setSuccess('Groepsnaam aangepast.');
+                    setRenameDrafts((current) => ({ ...current, [nextName]: nextName }));
+                  }}
+                  className="rounded-lg border border-line bg-panel px-3 py-2 text-xs font-semibold text-textMain transition hover:border-accent hover:text-accent"
+                >
+                  Naam aanpassen
+                </button>
+              </div>
+
+              <div className="mt-2 grid grid-cols-1 gap-2 lg:grid-cols-[1fr_auto]">
+                <input
+                  value={newSubgroupDrafts[groupInfo.mainGroup] ?? ''}
+                  onChange={(event) =>
+                    setNewSubgroupDrafts((current) => ({ ...current, [groupInfo.mainGroup]: event.target.value }))
+                  }
+                  placeholder="Nieuwe subgroep"
+                  className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-textMain outline-none transition focus:border-accent"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const subgroupName = (newSubgroupDrafts[groupInfo.mainGroup] ?? '').trim();
+                    if (!subgroupName) {
+                      setError('Subgroepnaam is verplicht.');
+                      return;
+                    }
+
+                    const added = onAddSubgroupToGroup(groupInfo.mainGroup, subgroupName);
+                    if (!added) {
+                      setError('Subgroep bestaat al of kon niet toegevoegd worden.');
+                      return;
+                    }
+
+                    setError('');
+                    setSuccess('Subgroep toegevoegd.');
+                    setNewSubgroupDrafts((current) => ({ ...current, [groupInfo.mainGroup]: '' }));
+                  }}
+                  className="rounded-lg border border-line bg-panel px-3 py-2 text-xs font-semibold text-textMain transition hover:border-accent hover:text-accent"
+                >
+                  Subgroep toevoegen
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -642,11 +663,46 @@ function GroupDashboardRoute({ groups }: GroupDashboardRouteProps): JSX.Element 
 }
 
 function App(): JSX.Element {
-  const [groups, setGroups] = useState<AppGroup[]>(() => loadStoredGroups());
+  const [groups, setGroups] = useState<AppGroup[]>(DEFAULT_APP_GROUPS);
+  const [isLoadingGroups, setIsLoadingGroups] = useState<boolean>(true);
+  const [groupsError, setGroupsError] = useState<string>('');
 
   useEffect(() => {
-    localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(groups));
-  }, [groups]);
+    let cancelled = false;
+
+    const loadGroups = async (): Promise<void> => {
+      setIsLoadingGroups(true);
+      setGroupsError('');
+
+      try {
+        let loaded = await fetchSharedGroups();
+
+        if (loaded.length === 0) {
+          await upsertSharedGroups(DEFAULT_APP_GROUPS);
+          loaded = await fetchSharedGroups();
+        }
+
+        if (!cancelled) {
+          setGroups(loaded.length > 0 ? loaded : DEFAULT_APP_GROUPS);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setGroups(DEFAULT_APP_GROUPS);
+          setGroupsError(error instanceof Error ? error.message : 'Kon groepen niet laden.');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingGroups(false);
+        }
+      }
+    };
+
+    void loadGroups();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleCreateGroupSet = (groupName: string, subgroups: string[]): void => {
     setGroups((current) => {
@@ -681,17 +737,105 @@ function App(): JSX.Element {
               },
             ];
 
-      return [...current, ...groupEntries];
+      const next = [...current, ...groupEntries];
+      void upsertSharedGroups(next).catch(() => undefined);
+      return next;
     });
   };
 
+  const handleAddSubgroupToGroup = (mainGroup: string, subgroupName: string): boolean => {
+    let wasAdded = false;
+
+    setGroups((current) => {
+      const parentGroup = current.find((group) => group.mainGroup === mainGroup);
+      if (!parentGroup) {
+        return current;
+      }
+
+      const subgroupExists = current.some(
+        (group) => group.mainGroup === mainGroup && (group.subgroup ?? '').toLowerCase() === subgroupName.toLowerCase(),
+      );
+
+      if (subgroupExists) {
+        return current;
+      }
+
+      const now = Date.now().toString(36);
+      const subgroupSlug = `${slugify(parentGroup.name)}-${slugify(subgroupName)}-${now}`;
+      const entry: AppGroup = {
+        id: subgroupSlug,
+        slug: subgroupSlug,
+        name: parentGroup.name,
+        mainGroup: parentGroup.mainGroup,
+        subgroup: subgroupName,
+        visibilityType: 'open',
+        effectiveGroupKey: `${parentGroup.mainGroup}-${subgroupName}-${now}`,
+        adminRequiredForRideChanges: false,
+      };
+
+      wasAdded = true;
+      const next = [...current, entry];
+      void upsertSharedGroups(next).catch(() => undefined);
+      return next;
+    });
+
+    return wasAdded;
+  };
+
+  const handleRenameGroup = (mainGroup: string, newName: string): boolean => {
+    let wasRenamed = false;
+
+    setGroups((current) => {
+      const hasSource = current.some((group) => group.mainGroup === mainGroup);
+      if (!hasSource) {
+        return current;
+      }
+
+      wasRenamed = true;
+      const next = current.map((group) =>
+        group.mainGroup === mainGroup
+          ? {
+              ...group,
+              name: newName,
+              mainGroup: newName,
+            }
+          : group,
+      );
+      void upsertSharedGroups(next).catch(() => undefined);
+      return next;
+    });
+
+    return wasRenamed;
+  };
+
+  if (isLoadingGroups) {
+    return <p className="p-6 text-sm text-textMuted">Groepen laden...</p>;
+  }
+
   return (
+    <>
+      {groupsError ? (
+        <div className="mx-auto mt-4 max-w-[1200px] rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs text-red-200">
+          Groepen konden niet gesynchroniseerd worden met Supabase. Fallback actief: {groupsError}
+        </div>
+      ) : null}
     <Routes>
       <Route path="/" element={<GroupSelectionPage groups={groups} />} />
-      <Route path="/beheer/groepen" element={<GroupAdminPage groups={groups} onCreateGroupSet={handleCreateGroupSet} />} />
+      <Route
+        path="/beheer/groepen"
+        element={
+          <GroupAdminPage
+            groups={groups}
+            onCreateGroupSet={handleCreateGroupSet}
+            onAddSubgroupToGroup={handleAddSubgroupToGroup}
+            onRenameGroup={handleRenameGroup}
+          />
+        }
+      />
       <Route path="/:slug" element={<GroupDashboardRoute groups={groups} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }
 

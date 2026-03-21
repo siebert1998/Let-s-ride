@@ -172,6 +172,10 @@ create policy "Users can upsert own profile"
 drop policy if exists "Authenticated users can read groups" on public.groups;
 drop policy if exists "Authenticated users can create groups" on public.groups;
 drop policy if exists "Group admins can update groups" on public.groups;
+drop policy if exists "Public can read groups" on public.groups;
+drop policy if exists "Public can create groups" on public.groups;
+drop policy if exists "Public can update groups" on public.groups;
+drop policy if exists "Public can delete groups" on public.groups;
 create policy "Authenticated users can read groups"
   on public.groups
   for select
@@ -190,6 +194,31 @@ create policy "Group admins can update groups"
   to authenticated
   using (public.is_group_admin(groups.id))
   with check (public.is_group_admin(groups.id));
+
+create policy "Public can read groups"
+  on public.groups
+  for select
+  to anon
+  using (true);
+
+create policy "Public can create groups"
+  on public.groups
+  for insert
+  to anon
+  with check (true);
+
+create policy "Public can update groups"
+  on public.groups
+  for update
+  to anon
+  using (true)
+  with check (true);
+
+create policy "Public can delete groups"
+  on public.groups
+  for delete
+  to anon
+  using (true);
 
 drop policy if exists "Users can read own memberships or admin view" on public.group_memberships;
 drop policy if exists "Users can create own membership" on public.group_memberships;
