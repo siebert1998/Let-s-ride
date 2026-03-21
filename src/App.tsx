@@ -118,11 +118,11 @@ const slugify = (value: string): string =>
 interface DashboardShellProps {
   group: AppGroup;
   subgroupOptions: Array<{ label: string; slug: string }>;
-  subgroupTargets: Array<{ label: string; groupKey: string }>;
+  plannerPinGroupKey: string;
   onSubgroupChange: (slug: string) => void;
 }
 
-function DashboardShell({ group, subgroupOptions, subgroupTargets, onSubgroupChange }: DashboardShellProps): JSX.Element {
+function DashboardShell({ group, subgroupOptions, plannerPinGroupKey, onSubgroupChange }: DashboardShellProps): JSX.Element {
   const [weekStartDate, setWeekStartDate] = useState<Date>(getMondayForWeek(new Date()));
   const [activePage, setActivePage] = useState<Page>('dashboard');
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
@@ -200,7 +200,7 @@ function DashboardShell({ group, subgroupOptions, subgroupTargets, onSubgroupCha
   );
 
   const selectedSubgroupLabel = group.subgroup ?? subgroupOptions[0]?.label ?? '';
-  const showSubgroupSwitcher = subgroupOptions.length > 1;
+  const showSubgroupSwitcher = activePage !== 'planner' && subgroupOptions.length > 1;
 
   return (
     <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
@@ -329,7 +329,7 @@ function DashboardShell({ group, subgroupOptions, subgroupTargets, onSubgroupCha
       ) : activePage === 'planner' ? (
         <PlannerPage
           plannerGroupKey={plannerGroupKey}
-          subgroupTargets={subgroupTargets}
+          plannerPinGroupKey={plannerPinGroupKey}
           canEditRoutes
           onRouteSaved={(dateKey) => {
             const date = new Date(`${dateKey}T00:00:00`);
@@ -659,22 +659,21 @@ function GroupDashboardRoute({ groups }: GroupDashboardRouteProps): JSX.Element 
     }));
   }, [group, groups]);
 
-  const subgroupTargets = useMemo(() => {
+  const plannerPinGroupKey = useMemo(() => {
     if (!group) {
-      return [{ label: 'Huidige groep', groupKey: '' }];
+      return '';
     }
 
-    const sameMainGroup = groups.filter((candidate) => candidate.mainGroup === group.mainGroup);
-    const withSubgroups = sameMainGroup.filter((candidate) => candidate.subgroup);
-
-    if (withSubgroups.length === 0) {
-      return [{ label: group.name, groupKey: group.effectiveGroupKey }];
+    if (group.mainGroup !== 'Vitessen Baruma') {
+      return group.effectiveGroupKey;
     }
 
-    return withSubgroups.map((candidate) => ({
-      label: candidate.subgroup ?? candidate.name,
-      groupKey: candidate.effectiveGroupKey,
-    }));
+    const socialRidesGroup = groups.find(
+      (candidate) =>
+        candidate.mainGroup === group.mainGroup && candidate.subgroup?.trim().toLowerCase() === 'social rides',
+    );
+
+    return socialRidesGroup?.effectiveGroupKey ?? group.effectiveGroupKey;
   }, [group, groups]);
 
   if (!group) {
@@ -685,7 +684,7 @@ function GroupDashboardRoute({ groups }: GroupDashboardRouteProps): JSX.Element 
     <DashboardShell
       group={group}
       subgroupOptions={subgroupOptions}
-      subgroupTargets={subgroupTargets}
+      plannerPinGroupKey={plannerPinGroupKey}
       onSubgroupChange={(slug) => {
         navigate(`/${slug}`);
       }}

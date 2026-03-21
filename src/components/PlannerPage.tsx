@@ -13,7 +13,7 @@ import { UploadDropzone } from './UploadDropzone';
 
 interface PlannerPageProps {
   plannerGroupKey: string;
-  subgroupTargets: Array<{ label: string; groupKey: string }>;
+  plannerPinGroupKey: string;
   onRouteSaved: (dateKey: string) => void;
   canEditRoutes: boolean;
 }
@@ -30,7 +30,6 @@ interface PlannerDraft {
   sourceFile: SourceFileState | null;
   notes: string;
   pinDate: string;
-  targetGroupKeys: string[];
   error: string;
   isSaving: boolean;
   hasConflict: boolean;
@@ -54,7 +53,6 @@ const createDraft = (groupKey: string): PlannerDraft => {
     sourceFile: null,
     notes: '',
     pinDate: '',
-    targetGroupKeys: [],
     error: '',
     isSaving: false,
     hasConflict: false,
@@ -95,7 +93,6 @@ const toPlannerDraft = (groupKey: string, route: SyncedRoute): PlannerDraft => {
     sourceFile: route.gpxText && route.fileName ? { name: route.fileName, gpxText: route.gpxText } : null,
     notes: route.notes,
     pinDate: '',
-    targetGroupKeys: route.plannerTargetGroups,
     error: '',
     isSaving: false,
     hasConflict: false,
@@ -105,14 +102,13 @@ const toPlannerDraft = (groupKey: string, route: SyncedRoute): PlannerDraft => {
 
 export function PlannerPage({
   plannerGroupKey,
-  subgroupTargets,
+  plannerPinGroupKey,
   onRouteSaved,
   canEditRoutes,
 }: PlannerPageProps): JSX.Element {
   const [drafts, setDrafts] = useState<PlannerDraft[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [pageError, setPageError] = useState<string>('');
-  const [openTargetPickerDraftId, setOpenTargetPickerDraftId] = useState<string | null>(null);
 
   const canAddMore = useMemo(() => drafts.length < 20, [drafts.length]);
   useEffect(() => {
@@ -180,50 +176,30 @@ export function PlannerPage({
 
     try {
       if (draft.pinDate) {
-        const selectedTargetGroups =
-          draft.targetGroupKeys.length > 0
-            ? draft.targetGroupKeys
-            : subgroupTargets.map((target) => target.groupKey).filter(Boolean);
-
-        if (selectedTargetGroups.length === 0) {
-          updateDraft(id, (current) => ({
-            ...current,
-            isSaving: false,
-            hasConflict: false,
-            error: 'Selecteer minstens 1 subgroep.',
-          }));
-          return;
-        }
+        const dashboardSlotKey = `group-${plannerPinGroupKey}-day-${draft.pinDate}`;
 
         if (!forceOverwrite) {
-          for (const targetGroupKey of selectedTargetGroups) {
-            const dashboardSlotKey = `group-${targetGroupKey}-day-${draft.pinDate}`;
-            const existing = await fetchRouteBySlot(dashboardSlotKey);
-            if (existing?.gpxText) {
-              updateDraft(id, (current) => ({
-                ...current,
-                isSaving: false,
-                hasConflict: true,
-                error: 'Op deze datum staat al een rit in minstens 1 geselecteerde subgroep.',
-              }));
-              return;
-            }
+          const existing = await fetchRouteBySlot(dashboardSlotKey);
+          if (existing?.gpxText) {
+            updateDraft(id, (current) => ({
+              ...current,
+              isSaving: false,
+              hasConflict: true,
+              error: 'Op deze datum staat al een rit. Kies overschrijven of annuleer.',
+            }));
+            return;
           }
         }
 
-        for (const targetGroupKey of selectedTargetGroups) {
-          const dashboardSlotKey = `group-${targetGroupKey}-day-${draft.pinDate}`;
-
-          await upsertRouteForSlot({
-            slotKey: dashboardSlotKey,
-            title: toDashboardTitle(draft.pinDate),
-            notes: draft.notes,
-            fileName: draft.sourceFile.name,
-            gpxText: draft.sourceFile.gpxText,
-            distanceKm: draft.routeData.distanceKm,
-            elevationGainM: draft.routeData.elevationGainM,
-          });
-        }
+        await upsertRouteForSlot({
+          slotKey: dashboardSlotKey,
+          title: toDashboardTitle(draft.pinDate),
+          notes: draft.notes,
+          fileName: draft.sourceFile.name,
+          gpxText: draft.sourceFile.gpxText,
+          distanceKm: draft.routeData.distanceKm,
+          elevationGainM: draft.routeData.elevationGainM,
+        });
 
         await deleteRouteBySlot(draft.slotKey);
         onRouteSaved(draft.pinDate);
@@ -239,7 +215,6 @@ export function PlannerPage({
         gpxText: draft.sourceFile.gpxText,
         distanceKm: draft.routeData.distanceKm,
         elevationGainM: draft.routeData.elevationGainM,
-        plannerTargetGroups: draft.targetGroupKeys,
       });
 
       updateDraft(id, (current) => ({
@@ -363,55 +338,6 @@ export function PlannerPage({
             </label>
 
             {draft.error ? <p className="mt-2 text-xs font-semibold text-red-400">{draft.error}</p> : null}
-
-            {subgroupTargets.length > 1 ? (
-              <div className="relative mt-3">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setOpenTargetPickerDraftId((current) => (current === draft.id ? null : draft.id))
-                  }
-                  className="flex w-full items-center justify-between rounded-lg border border-line bg-panelSoft px-3 py-2 text-xs font-semibold text-textMain transition hover:border-accent"
-                >
-                  <span>
-                    Subgroepen ({draft.targetGroupKeys.length}/{subgroupTargets.length})
-                  </span>
-                  <span>{openTargetPickerDraftId === draft.id ? '▴' : '▾'}</span>
-                </button>
-
-                {openTargetPickerDraftId === draft.id ? (
-                  <div className="absolute left-0 right-0 top-11 z-20 rounded-lg border border-line bg-panel p-2 shadow-card">
-                    <div className="max-h-40 space-y-1 overflow-y-auto">
-                      {subgroupTargets.map((target) => (
-                        <label key={target.groupKey} className="flex items-center gap-2 rounded px-1 py-1 text-xs text-textMain">
-                          <input
-                            type="checkbox"
-                            checked={draft.targetGroupKeys.includes(target.groupKey)}
-                            onChange={() =>
-                              updateDraft(draft.id, (current) => {
-                                const hasKey = current.targetGroupKeys.includes(target.groupKey);
-                                const nextKeys = hasKey
-                                  ? current.targetGroupKeys.filter((value) => value !== target.groupKey)
-                                  : [...current.targetGroupKeys, target.groupKey];
-
-                                return {
-                                  ...current,
-                                  targetGroupKeys: nextKeys,
-                                  hasConflict: false,
-                                  isSaved: false,
-                                };
-                              })
-                            }
-                            className="h-3.5 w-3.5 accent-accent"
-                          />
-                          {target.label}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
 
             <div className="mt-3 flex gap-2">
               <button
