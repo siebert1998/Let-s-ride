@@ -118,10 +118,11 @@ const slugify = (value: string): string =>
 interface DashboardShellProps {
   group: AppGroup;
   subgroupOptions: Array<{ label: string; slug: string }>;
+  subgroupTargets: Array<{ label: string; groupKey: string }>;
   onSubgroupChange: (slug: string) => void;
 }
 
-function DashboardShell({ group, subgroupOptions, onSubgroupChange }: DashboardShellProps): JSX.Element {
+function DashboardShell({ group, subgroupOptions, subgroupTargets, onSubgroupChange }: DashboardShellProps): JSX.Element {
   const [weekStartDate, setWeekStartDate] = useState<Date>(getMondayForWeek(new Date()));
   const [activePage, setActivePage] = useState<Page>('dashboard');
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
@@ -130,6 +131,8 @@ function DashboardShell({ group, subgroupOptions, onSubgroupChange }: DashboardS
   const [refreshTick, setRefreshTick] = useState<number>(0);
 
   const effectiveGroupKey = group.effectiveGroupKey;
+  const plannerGroupKey =
+    group.mainGroup === 'Vitessen Baruma' ? 'vitessen-baruma-shared-planner' : group.effectiveGroupKey;
 
   useEffect(() => {
     const storageKey = `letsride:day-filter:${effectiveGroupKey}`;
@@ -325,7 +328,8 @@ function DashboardShell({ group, subgroupOptions, onSubgroupChange }: DashboardS
         )
       ) : activePage === 'planner' ? (
         <PlannerPage
-          effectiveGroupKey={effectiveGroupKey}
+          plannerGroupKey={plannerGroupKey}
+          subgroupTargets={subgroupTargets}
           canEditRoutes
           onRouteSaved={(dateKey) => {
             const date = new Date(`${dateKey}T00:00:00`);
@@ -655,6 +659,24 @@ function GroupDashboardRoute({ groups }: GroupDashboardRouteProps): JSX.Element 
     }));
   }, [group, groups]);
 
+  const subgroupTargets = useMemo(() => {
+    if (!group) {
+      return [{ label: 'Huidige groep', groupKey: '' }];
+    }
+
+    const sameMainGroup = groups.filter((candidate) => candidate.mainGroup === group.mainGroup);
+    const withSubgroups = sameMainGroup.filter((candidate) => candidate.subgroup);
+
+    if (withSubgroups.length === 0) {
+      return [{ label: group.name, groupKey: group.effectiveGroupKey }];
+    }
+
+    return withSubgroups.map((candidate) => ({
+      label: candidate.subgroup ?? candidate.name,
+      groupKey: candidate.effectiveGroupKey,
+    }));
+  }, [group, groups]);
+
   if (!group) {
     return <Navigate to="/" replace />;
   }
@@ -663,6 +685,7 @@ function GroupDashboardRoute({ groups }: GroupDashboardRouteProps): JSX.Element 
     <DashboardShell
       group={group}
       subgroupOptions={subgroupOptions}
+      subgroupTargets={subgroupTargets}
       onSubgroupChange={(slug) => {
         navigate(`/${slug}`);
       }}

@@ -8,12 +8,14 @@ create table if not exists public.ride_routes (
   elevation_gain_m double precision,
   history_comment text not null default '',
   photos jsonb not null default '[]'::jsonb,
+  planner_target_groups jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default timezone('utc', now())
 );
 
 alter table public.ride_routes
   add column if not exists history_comment text not null default '',
-  add column if not exists photos jsonb not null default '[]'::jsonb;
+  add column if not exists photos jsonb not null default '[]'::jsonb,
+  add column if not exists planner_target_groups jsonb not null default '[]'::jsonb;
 
 alter table public.ride_routes enable row level security;
 

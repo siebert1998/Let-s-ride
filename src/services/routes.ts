@@ -12,6 +12,7 @@ interface RideRouteRow {
   elevation_gain_m: number | null;
   history_comment: string | null;
   photos: unknown;
+  planner_target_groups: unknown;
   updated_at: string;
 }
 
@@ -25,6 +26,7 @@ export interface SyncedRoute {
   elevationGainM: number | null;
   historyComment: string;
   photos: string[];
+  plannerTargetGroups: string[];
   updatedAt: string;
 }
 
@@ -36,6 +38,7 @@ export interface UpsertRouteInput {
   gpxText: string | null;
   distanceKm: number | null;
   elevationGainM: number | null;
+  plannerTargetGroups?: string[];
 }
 
 const normalizePhotos = (photosValue: unknown): string[] => {
@@ -44,6 +47,14 @@ const normalizePhotos = (photosValue: unknown): string[] => {
   }
 
   return photosValue.filter((photo): photo is string => typeof photo === 'string');
+};
+
+const normalizePlannerTargetGroups = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is string => typeof item === 'string');
 };
 
 const toSyncedRoute = (row: RideRouteRow): SyncedRoute => ({
@@ -56,11 +67,12 @@ const toSyncedRoute = (row: RideRouteRow): SyncedRoute => ({
   elevationGainM: row.elevation_gain_m,
   historyComment: row.history_comment ?? '',
   photos: normalizePhotos(row.photos),
+  plannerTargetGroups: normalizePlannerTargetGroups(row.planner_target_groups),
   updatedAt: row.updated_at,
 });
 
 const selectFields =
-  'slot_key, title, notes, file_name, gpx_text, distance_km, elevation_gain_m, history_comment, photos, updated_at';
+  'slot_key, title, notes, file_name, gpx_text, distance_km, elevation_gain_m, history_comment, photos, planner_target_groups, updated_at';
 
 export const fetchRouteBySlot = async (slotKey: string): Promise<SyncedRoute | null> => {
   const supabase = getSupabaseClient();
@@ -197,6 +209,7 @@ export const upsertRouteForSlot = async (input: UpsertRouteInput): Promise<void>
     gpx_text: input.gpxText,
     distance_km: input.distanceKm,
     elevation_gain_m: input.elevationGainM,
+    planner_target_groups: input.plannerTargetGroups ?? [],
     updated_at: new Date().toISOString(),
   };
 
