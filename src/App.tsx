@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { PlannerPage } from './components/PlannerPage';
 import { RideHistoryPage } from './components/RideHistoryPage';
@@ -25,9 +25,10 @@ interface AppGroup {
 
 type Page = 'dashboard' | 'history' | 'planner';
 
+const GROUPS_STORAGE_KEY = 'letsride:app-groups:v1';
 const defaultDayIndexes = [0, 1, 2, 3, 4, 5, 6];
 
-const APP_GROUPS: AppGroup[] = [
+const DEFAULT_APP_GROUPS: AppGroup[] = [
   {
     id: 'de-vzw',
     slug: 'de-vzw',
@@ -90,12 +91,6 @@ const APP_GROUPS: AppGroup[] = [
   },
 ];
 
-const START_GROUPS = [
-  { label: 'De VZW', slug: 'de-vzw' },
-  { label: 'AquaMundo Cycling Team', slug: 'aquamundo-cycling-team' },
-  { label: 'Vitessen Baruma', slug: 'barumas-vitessen-groep-a' },
-] as const;
-
 const getMondayForWeek = (anchor: Date): Date => {
   const start = new Date(anchor);
   start.setHours(0, 0, 0, 0);
@@ -120,6 +115,56 @@ const toDateKey = (date: Date): string => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const slugify = (value: string): string =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+
+const isValidGroup = (value: unknown): value is AppGroup => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<AppGroup>;
+
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.slug === 'string' &&
+    typeof candidate.name === 'string' &&
+    typeof candidate.mainGroup === 'string' &&
+    (typeof candidate.subgroup === 'string' || candidate.subgroup === null) &&
+    (candidate.visibilityType === 'open' || candidate.visibilityType === 'closed') &&
+    typeof candidate.effectiveGroupKey === 'string' &&
+    typeof candidate.adminRequiredForRideChanges === 'boolean'
+  );
+};
+
+const loadStoredGroups = (): AppGroup[] => {
+  const raw = localStorage.getItem(GROUPS_STORAGE_KEY);
+
+  if (!raw) {
+    return DEFAULT_APP_GROUPS;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return DEFAULT_APP_GROUPS;
+    }
+
+    const groups = parsed.filter(isValidGroup);
+    if (groups.length === 0) {
+      return DEFAULT_APP_GROUPS;
+    }
+
+    return groups;
+  } catch {
+    return DEFAULT_APP_GROUPS;
+  }
 };
 
 interface DashboardShellProps {
@@ -360,19 +405,44 @@ function DashboardShell({ group, subgroupOptions, onSubgroupChange }: DashboardS
   );
 }
 
-function GroupSelectionPage(): JSX.Element {
+interface GroupSelectionPageProps {
+  groups: AppGroup[];
+}
+
+function GroupSelectionPage({ groups }: GroupSelectionPageProps): JSX.Element {
   const navigate = useNavigate();
+
+  const mainGroupCards = useMemo(() => {
+    const grouped = new Map<string, AppGroup[]>();
+
+    groups.forEach((group) => {
+      const current = grouped.get(group.mainGroup) ?? [];
+      current.push(group);
+      grouped.set(group.mainGroup, current);
+    });
+
+    return Array.from(grouped.values())
+      .map((groupItems) => {
+        const primary = groupItems.find((item) => item.subgroup === null) ?? groupItems[0];
+        return {
+          slug: primary.slug,
+          label: primary.name,
+          subgroupCount: groupItems.filter((item) => item.subgroup).length,
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [groups]);
 
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-8 sm:px-6">
       <section className="rounded-xl2 border border-line bg-panel/90 p-5 shadow-card">
         <p className="text-xs uppercase tracking-[0.2em] text-textMuted">Let&apos;s ride</p>
         <h1 className="mt-2 text-2xl font-extrabold text-textMain">Kies je groep</h1>
-        <p className="mt-1 text-sm text-textMuted">Kies een van de 3 bestaande groepen om het dashboard te openen.</p>
+        <p className="mt-1 text-sm text-textMuted">Kies een groep om het dashboard te openen.</p>
       </section>
 
       <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-        {START_GROUPS.map((group) => (
+        {mainGroupCards.map((group) => (
           <button
             key={group.slug}
             type="button"
@@ -380,6 +450,9 @@ function GroupSelectionPage(): JSX.Element {
             className="rounded-xl2 border border-line/80 bg-panel/95 p-5 text-left shadow-card transition hover:border-accent/60"
           >
             <p className="text-base font-bold text-textMain">{group.label}</p>
+            {group.subgroupCount > 0 ? (
+              <p className="mt-1 text-xs font-semibold text-textMuted">{group.subgroupCount} subgroepen</p>
+            ) : null}
             <p className="mt-2 text-xs font-semibold text-accent">Open dashboard</p>
           </button>
         ))}
@@ -388,24 +461,170 @@ function GroupSelectionPage(): JSX.Element {
   );
 }
 
-function GroupDashboardRoute(): JSX.Element {
+interface GroupAdminPageProps {
+  groups: AppGroup[];
+  onCreateGroupSet: (groupName: string, subgroups: string[]) => void;
+}
+
+function GroupAdminPage({ groups, onCreateGroupSet }: GroupAdminPageProps): JSX.Element {
+  const [groupName, setGroupName] = useState<string>('');
+  const [subgroups, setSubgroups] = useState<string[]>([]);
+  const [error, setError] = useState<string>('');
+  const [success, setSuccess] = useState<string>('');
+
+  const groupedOverview = useMemo(() => {
+    const grouped = new Map<string, string[]>();
+
+    groups.forEach((group) => {
+      const current = grouped.get(group.name) ?? [];
+      if (group.subgroup) {
+        current.push(group.subgroup);
+      }
+      grouped.set(group.name, current);
+    });
+
+    return Array.from(grouped.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [groups]);
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+
+    const cleanName = groupName.trim();
+    const cleanSubgroups = subgroups
+      .map((value) => value.trim())
+      .filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
+
+    if (!cleanName) {
+      setError('Groepsnaam is verplicht.');
+      return;
+    }
+
+    onCreateGroupSet(cleanName, cleanSubgroups);
+
+    setGroupName('');
+    setSubgroups([]);
+    setSuccess('Groep(en) aangemaakt.');
+  };
+
+  return (
+    <div className="mx-auto max-w-[1100px] px-4 py-8 sm:px-6">
+      <section className="rounded-xl2 border border-line bg-panel/90 p-5 shadow-card">
+        <p className="text-xs uppercase tracking-[0.2em] text-textMuted">Verborgen beheer</p>
+        <h1 className="mt-2 text-2xl font-extrabold text-textMain">Groepen beheren</h1>
+        <p className="mt-1 text-sm text-textMuted">Maak hier nieuwe groepen aan met optionele subgroepen.</p>
+      </section>
+
+      <form onSubmit={handleSubmit} className="mt-4 space-y-3 rounded-xl2 border border-line/80 bg-panel/95 p-5 shadow-card">
+        <input
+          value={groupName}
+          onChange={(event) => setGroupName(event.target.value)}
+          placeholder="Groepsnaam"
+          required
+          className="w-full rounded-lg border border-line bg-panelSoft px-3 py-2 text-sm text-textMain outline-none transition focus:border-accent"
+        />
+
+        <div className="rounded-lg border border-line bg-panelSoft p-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-textMuted">Subgroepen (optioneel)</p>
+            <button
+              type="button"
+              onClick={() => setSubgroups((current) => [...current, ''])}
+              className="rounded-md border border-line bg-panel px-2 py-1 text-xs font-semibold text-textMain transition hover:border-accent hover:text-accent"
+            >
+              + Subgroep
+            </button>
+          </div>
+
+          {subgroups.length === 0 ? <p className="mt-2 text-xs text-textMuted">Geen subgroepen toegevoegd.</p> : null}
+
+          <div className="mt-2 space-y-2">
+            {subgroups.map((subgroup, index) => (
+              <div key={`subgroup-${index}`} className="flex items-center gap-2">
+                <input
+                  value={subgroup}
+                  onChange={(event) =>
+                    setSubgroups((current) =>
+                      current.map((value, valueIndex) => (valueIndex === index ? event.target.value : value)),
+                    )
+                  }
+                  placeholder={`Subgroep ${index + 1}`}
+                  className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-textMain outline-none transition focus:border-accent"
+                />
+                <button
+                  type="button"
+                  onClick={() => setSubgroups((current) => current.filter((_, valueIndex) => valueIndex !== index))}
+                  className="rounded-md border border-line bg-panel px-2 py-2 text-xs font-semibold text-textMuted transition hover:border-red-400 hover:text-red-300"
+                  aria-label="Verwijder subgroep"
+                  title="Verwijder subgroep"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {error ? <p className="text-xs font-semibold text-red-400">{error}</p> : null}
+        {success ? <p className="text-xs font-semibold text-accent">{success}</p> : null}
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href = '/';
+            }}
+            className="rounded-lg border border-line bg-panel px-4 py-2 text-sm font-semibold text-textMain transition hover:border-accent hover:text-accent"
+          >
+            Terug
+          </button>
+          <button
+            type="submit"
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-bold text-black transition hover:bg-accentStrong"
+          >
+            Groep(en) aanmaken
+          </button>
+        </div>
+      </form>
+
+      <section className="mt-4 rounded-xl2 border border-line/80 bg-panel/95 p-5 shadow-card">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-textMuted">Bestaande groepen</h2>
+        <div className="mt-2 space-y-2">
+          {groupedOverview.map(([name, subgroupList]) => (
+            <div key={name} className="rounded-lg border border-line bg-panelSoft px-3 py-2">
+              <p className="text-sm font-semibold text-textMain">{name}</p>
+              <p className="text-xs text-textMuted">
+                {subgroupList.length > 0 ? `Subgroepen: ${subgroupList.join(', ')}` : 'Geen subgroepen'}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+interface GroupDashboardRouteProps {
+  groups: AppGroup[];
+}
+
+function GroupDashboardRoute({ groups }: GroupDashboardRouteProps): JSX.Element {
   const params = useParams<{ slug: string }>();
   const navigate = useNavigate();
 
-  const group = useMemo(
-    () => APP_GROUPS.find((candidate) => candidate.slug === params.slug) ?? null,
-    [params.slug],
-  );
+  const group = useMemo(() => groups.find((candidate) => candidate.slug === params.slug) ?? null, [groups, params.slug]);
 
   const subgroupOptions = useMemo(() => {
     if (!group?.subgroup) {
       return [];
     }
 
-    return APP_GROUPS.filter((candidate) => candidate.mainGroup === group.mainGroup && candidate.subgroup).map(
-      (candidate) => ({ label: candidate.subgroup ?? candidate.name, slug: candidate.slug }),
-    );
-  }, [group]);
+    return groups.filter((candidate) => candidate.mainGroup === group.mainGroup && candidate.subgroup).map((candidate) => ({
+      label: candidate.subgroup ?? candidate.name,
+      slug: candidate.slug,
+    }));
+  }, [group, groups]);
 
   if (!group) {
     return <Navigate to="/" replace />;
@@ -423,10 +642,54 @@ function GroupDashboardRoute(): JSX.Element {
 }
 
 function App(): JSX.Element {
+  const [groups, setGroups] = useState<AppGroup[]>(() => loadStoredGroups());
+
+  useEffect(() => {
+    localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(groups));
+  }, [groups]);
+
+  const handleCreateGroupSet = (groupName: string, subgroups: string[]): void => {
+    setGroups((current) => {
+      const cleanName = groupName.trim();
+      const now = Date.now().toString(36);
+
+      const groupEntries: AppGroup[] =
+        subgroups.length > 0
+          ? subgroups.map((subgroup, index) => {
+              const subgroupSlug = `${slugify(cleanName)}-${slugify(subgroup)}-${now}-${index + 1}`;
+              return {
+                id: subgroupSlug,
+                slug: subgroupSlug,
+                name: cleanName,
+                mainGroup: cleanName,
+                subgroup,
+                visibilityType: 'open',
+                effectiveGroupKey: `${cleanName}-${subgroup}-${now}-${index + 1}`,
+                adminRequiredForRideChanges: false,
+              };
+            })
+          : [
+              {
+                id: `${slugify(cleanName)}-${now}`,
+                slug: `${slugify(cleanName)}-${now}`,
+                name: cleanName,
+                mainGroup: cleanName,
+                subgroup: null,
+                visibilityType: 'open',
+                effectiveGroupKey: `${cleanName}-${now}`,
+                adminRequiredForRideChanges: false,
+              },
+            ];
+
+      return [...current, ...groupEntries];
+    });
+  };
+
   return (
     <Routes>
-      <Route path="/" element={<GroupSelectionPage />} />
-      <Route path="/:slug" element={<GroupDashboardRoute />} />
+      <Route path="/" element={<GroupSelectionPage groups={groups} />} />
+      <Route path="/beheer/groepen" element={<GroupAdminPage groups={groups} onCreateGroupSet={handleCreateGroupSet} />} />
+      <Route path="/:slug" element={<GroupDashboardRoute groups={groups} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
