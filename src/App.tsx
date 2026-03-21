@@ -411,9 +411,9 @@ function GroupSelectionPage({ groups }: GroupSelectionPageProps): JSX.Element {
 
 interface GroupAdminPageProps {
   groups: AppGroup[];
-  onCreateGroupSet: (groupName: string, subgroups: string[]) => void;
-  onAddSubgroupToGroup: (mainGroup: string, subgroupName: string) => boolean;
-  onRenameGroup: (mainGroup: string, newName: string) => boolean;
+  onCreateGroupSet: (groupName: string, subgroups: string[]) => Promise<boolean>;
+  onAddSubgroupToGroup: (mainGroup: string, subgroupName: string) => Promise<boolean>;
+  onRenameGroup: (mainGroup: string, newName: string) => Promise<boolean>;
 }
 
 function GroupAdminPage({ groups, onCreateGroupSet, onAddSubgroupToGroup, onRenameGroup }: GroupAdminPageProps): JSX.Element {
@@ -440,7 +440,7 @@ function GroupAdminPage({ groups, onCreateGroupSet, onAddSubgroupToGroup, onRena
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [groups]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     setError('');
     setSuccess('');
@@ -455,7 +455,11 @@ function GroupAdminPage({ groups, onCreateGroupSet, onAddSubgroupToGroup, onRena
       return;
     }
 
-    onCreateGroupSet(cleanName, cleanSubgroups);
+    const created = await onCreateGroupSet(cleanName, cleanSubgroups);
+    if (!created) {
+      setError('Groep(en) konden niet opgeslagen worden.');
+      return;
+    }
 
     setGroupName('');
     setSubgroups([]);
@@ -563,13 +567,14 @@ function GroupAdminPage({ groups, onCreateGroupSet, onAddSubgroupToGroup, onRena
                 <button
                   type="button"
                   onClick={() => {
+                    void (async () => {
                     const nextName = (renameDrafts[groupInfo.mainGroup] ?? groupInfo.name).trim();
                     if (!nextName) {
                       setError('Nieuwe naam mag niet leeg zijn.');
                       return;
                     }
 
-                    const renamed = onRenameGroup(groupInfo.mainGroup, nextName);
+                    const renamed = await onRenameGroup(groupInfo.mainGroup, nextName);
                     if (!renamed) {
                       setError('Naam kon niet aangepast worden.');
                       return;
@@ -577,7 +582,8 @@ function GroupAdminPage({ groups, onCreateGroupSet, onAddSubgroupToGroup, onRena
 
                     setError('');
                     setSuccess('Groepsnaam aangepast.');
-                    setRenameDrafts((current) => ({ ...current, [nextName]: nextName }));
+                    setRenameDrafts((current) => ({ ...current, [groupInfo.mainGroup]: nextName }));
+                    })();
                   }}
                   className="rounded-lg border border-line bg-panel px-3 py-2 text-xs font-semibold text-textMain transition hover:border-accent hover:text-accent"
                 >
@@ -597,13 +603,14 @@ function GroupAdminPage({ groups, onCreateGroupSet, onAddSubgroupToGroup, onRena
                 <button
                   type="button"
                   onClick={() => {
+                    void (async () => {
                     const subgroupName = (newSubgroupDrafts[groupInfo.mainGroup] ?? '').trim();
                     if (!subgroupName) {
                       setError('Subgroepnaam is verplicht.');
                       return;
                     }
 
-                    const added = onAddSubgroupToGroup(groupInfo.mainGroup, subgroupName);
+                    const added = await onAddSubgroupToGroup(groupInfo.mainGroup, subgroupName);
                     if (!added) {
                       setError('Subgroep bestaat al of kon niet toegevoegd worden.');
                       return;
@@ -612,6 +619,7 @@ function GroupAdminPage({ groups, onCreateGroupSet, onAddSubgroupToGroup, onRena
                     setError('');
                     setSuccess('Subgroep toegevoegd.');
                     setNewSubgroupDrafts((current) => ({ ...current, [groupInfo.mainGroup]: '' }));
+                    })();
                   }}
                   className="rounded-lg border border-line bg-panel px-3 py-2 text-xs font-semibold text-textMain transition hover:border-accent hover:text-accent"
                 >
@@ -704,8 +712,38 @@ function App(): JSX.Element {
     };
   }, []);
 
-  const handleCreateGroupSet = (groupName: string, subgroups: string[]): void => {
+  const persistGroups = async (next: AppGroup[]): Promise<boolean> => {
+    try {
+      await upsertSharedGroups(next);
+      setGroupsError('');
+      return true;
+    } catch (error) {
+      setGroupsError(error instanceof Error ? error.message : 'Kon groepen niet synchroniseren.');
+      return false;
+    }
+  };
+
+  const applyGroupsUpdate = async (producer: (current: AppGroup[]) => AppGroup[]): Promise<boolean> => {
+    let previous: AppGroup[] = [];
+    let next: AppGroup[] = [];
+
     setGroups((current) => {
+      previous = current;
+      next = producer(current);
+      return next;
+    });
+
+    const saved = await persistGroups(next);
+    if (!saved) {
+      setGroups(previous);
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleCreateGroupSet = async (groupName: string, subgroups: string[]): Promise<boolean> => {
+    return applyGroupsUpdate((current) => {
       const cleanName = groupName.trim();
       const now = Date.now().toString(36);
 
@@ -737,16 +775,14 @@ function App(): JSX.Element {
               },
             ];
 
-      const next = [...current, ...groupEntries];
-      void upsertSharedGroups(next).catch(() => undefined);
-      return next;
+      return [...current, ...groupEntries];
     });
   };
 
-  const handleAddSubgroupToGroup = (mainGroup: string, subgroupName: string): boolean => {
+  const handleAddSubgroupToGroup = async (mainGroup: string, subgroupName: string): Promise<boolean> => {
     let wasAdded = false;
 
-    setGroups((current) => {
+    const saved = await applyGroupsUpdate((current) => {
       const parentGroup = current.find((group) => group.mainGroup === mainGroup);
       if (!parentGroup) {
         return current;
@@ -774,18 +810,16 @@ function App(): JSX.Element {
       };
 
       wasAdded = true;
-      const next = [...current, entry];
-      void upsertSharedGroups(next).catch(() => undefined);
-      return next;
+      return [...current, entry];
     });
 
-    return wasAdded;
+    return wasAdded && saved;
   };
 
-  const handleRenameGroup = (mainGroup: string, newName: string): boolean => {
+  const handleRenameGroup = async (mainGroup: string, newName: string): Promise<boolean> => {
     let wasRenamed = false;
 
-    setGroups((current) => {
+    const saved = await applyGroupsUpdate((current) => {
       const hasSource = current.some((group) => group.mainGroup === mainGroup);
       if (!hasSource) {
         return current;
@@ -801,11 +835,10 @@ function App(): JSX.Element {
             }
           : group,
       );
-      void upsertSharedGroups(next).catch(() => undefined);
       return next;
     });
 
-    return wasRenamed;
+    return wasRenamed && saved;
   };
 
   if (isLoadingGroups) {
