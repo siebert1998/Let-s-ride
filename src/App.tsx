@@ -18,7 +18,6 @@ type AppGroup = SharedGroup;
 type Page = 'dashboard' | 'history' | 'planner';
 
 const defaultDayIndexes = [0, 1, 2, 3, 4, 5, 6];
-const GLOBAL_PLANNER_KEY = 'lets-ride-global-planner';
 
 const DEFAULT_APP_GROUPS: AppGroup[] = [
   {
@@ -141,7 +140,7 @@ function DashboardShell({
   const [refreshTick, setRefreshTick] = useState<number>(0);
 
   const effectiveGroupKey = group.effectiveGroupKey;
-  const plannerGroupKey = GLOBAL_PLANNER_KEY;
+  const plannerGroupKey = `shared-planner-${slugify(group.mainGroup)}`;
 
   useEffect(() => {
     const storageKey = `letsride:day-filter:${effectiveGroupKey}`;
@@ -692,7 +691,15 @@ function GroupDashboardRoute({ groups }: GroupDashboardRouteProps): JSX.Element 
       return [];
     }
 
-    return [...groups.map((candidate) => candidate.effectiveGroupKey), 'vitessen-baruma-shared-planner'];
+    const sameMainGroupKeys = groups
+      .filter((candidate) => candidate.mainGroup === group.mainGroup)
+      .map((candidate) => candidate.effectiveGroupKey);
+
+    if (group.mainGroup === 'Vitessen Baruma') {
+      return [...sameMainGroupKeys, 'vitessen-baruma-shared-planner'];
+    }
+
+    return sameMainGroupKeys;
   }, [group, groups]);
 
   const plannerTargetOptions = useMemo(() => {
