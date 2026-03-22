@@ -1,0 +1,23 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply m-0 min-h-screen bg-shell text-textMain antialiased;
+  background-image: radial-gradient(circle at top right, rgba(181, 255, 73, 0.12), transparent 28%),
+    radial-gradient(circle at bottom left, rgba(49, 83, 120, 0.24), transparent 34%);
+}
+
+#root {
+  @apply min-h-screen;
+}
+
+.leaflet-container {
+  @apply h-full w-full rounded-lg;
+}

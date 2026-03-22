@@ -9,13 +9,27 @@ create table if not exists public.ride_routes (
   history_comment text not null default '',
   photos jsonb not null default '[]'::jsonb,
   planner_target_groups jsonb not null default '[]'::jsonb,
+  download_count integer not null default 0,
   updated_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.ride_ratings (
+  id uuid primary key default gen_random_uuid(),
+  slot_key text not null references public.ride_routes(slot_key) on delete cascade,
+  rater_id text not null,
+  score numeric(3,1) not null check (score >= 0 and score <= 10),
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  unique (slot_key, rater_id)
 );
 
 alter table public.ride_routes
   add column if not exists history_comment text not null default '',
   add column if not exists photos jsonb not null default '[]'::jsonb,
-  add column if not exists planner_target_groups jsonb not null default '[]'::jsonb;
+  add column if not exists planner_target_groups jsonb not null default '[]'::jsonb,
+  add column if not exists download_count integer not null default 0;
+
+alter table public.ride_ratings enable row level security;
 
 alter table public.ride_routes enable row level security;
 
@@ -23,6 +37,10 @@ drop policy if exists "Public can read ride routes" on public.ride_routes;
 drop policy if exists "Public can insert ride routes" on public.ride_routes;
 drop policy if exists "Public can update ride routes" on public.ride_routes;
 drop policy if exists "Public can delete ride routes" on public.ride_routes;
+drop policy if exists "Public can read ride ratings" on public.ride_ratings;
+drop policy if exists "Public can insert ride ratings" on public.ride_ratings;
+drop policy if exists "Public can update ride ratings" on public.ride_ratings;
+drop policy if exists "Public can delete ride ratings" on public.ride_ratings;
 
 create policy "Public can read ride routes"
   on public.ride_routes
@@ -45,6 +63,31 @@ create policy "Public can update ride routes"
 
 create policy "Public can delete ride routes"
   on public.ride_routes
+  for delete
+  to anon
+  using (true);
+
+create policy "Public can read ride ratings"
+  on public.ride_ratings
+  for select
+  to anon
+  using (true);
+
+create policy "Public can insert ride ratings"
+  on public.ride_ratings
+  for insert
+  to anon
+  with check (true);
+
+create policy "Public can update ride ratings"
+  on public.ride_ratings
+  for update
+  to anon
+  using (true)
+  with check (true);
+
+create policy "Public can delete ride ratings"
+  on public.ride_ratings
   for delete
   to anon
   using (true);
