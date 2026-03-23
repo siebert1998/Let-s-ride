@@ -213,7 +213,9 @@ function DashboardShell({
   return (
     <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
       <header className="mb-6 flex flex-col gap-4 rounded-xl2 border border-line bg-panel/80 p-4 shadow-card md:flex-row md:items-start md:justify-between">
-        <img src="/LOGO.svg" alt="Let's ride logo" className="h-12 w-auto p-[9px] sm:h-14" />
+        <p className="px-[9px] text-lg font-extrabold tracking-tight text-textMain sm:text-xl">
+          Elke rit. Eén plek. Voor iedereen.
+        </p>
 
         <div className="flex flex-wrap items-start justify-end gap-3">
           <TopControls
